@@ -19,26 +19,43 @@ publishing: cut out by hand and pasted onto a layout board.
 - **Batch mode:** process every bundle folder under a parent folder in one go.
 
 ## Install
-Requires Python 3.11 or newer. The preview video also needs
-[ffmpeg](https://ffmpeg.org/) on `PATH`.
+You need Python 3.11 or newer. Preview videos also need
+[ffmpeg](https://ffmpeg.org/download.html); everything else works without it.
+
+Install Pasteup as a command of its own with [pipx](https://pipx.pypa.io) or
+[uv](https://docs.astral.sh/uv/), with no virtualenv to manage:
 
 ```bash
-git clone https://github.com/ftymoshchuk/pasteup.git
-cd pasteup
-python -m venv .venv
-source .venv/bin/activate
-pip install .
+pipx install pasteup
+# or
+uv tool install pasteup
 ```
+
+To update it later: `pipx upgrade pasteup` or `uv tool upgrade pasteup`. To try
+it without installing anything: `uvx pasteup`.
+
+For changes not released yet, install from GitHub instead:
+`pipx install git+https://github.com/ftymoshchuk/pasteup.git`.
 
 ## Run
 ```bash
 pasteup
 ```
-Then open `http://127.0.0.1:8000/` (API docs: `http://127.0.0.1:8000/docs`).
-`pasteup --help` lists the options, and `python -m pasteup` works too.
+Pasteup starts and opens in your browser. Keep its window open while you use
+it, and press Ctrl+C there to stop it. Running `pasteup` again while it runs
+just opens it again, and if another program has port 8000, Pasteup takes the
+next free port and says which.
+
+**To start it with a double-click,** run `pasteup --shortcut` once. It puts a
+launcher on your desktop (`Pasteup.command` on macOS, `Pasteup.bat` on
+Windows) or in your applications menu on Linux. Run it again if you reinstall
+Pasteup somewhere else.
+
+`pasteup --help` lists the options, among them `--no-browser` and `--port`;
+`python -m pasteup` works too. The API docs are at `/docs`.
 
 Pasteup reads and writes files at the paths you give it and has no login, so
-keep it on `127.0.0.1` (the default). See [SECURITY.md](SECURITY.md).
+keep it on `127.0.0.1` (the default). See [SECURITY.md](https://github.com/ftymoshchuk/pasteup/blob/main/SECURITY.md).
 
 ### Optional environment variables
 - `PASTEUP_INPUT_FOLDER`: prefills the input-folder field, e.g.
@@ -49,17 +66,35 @@ keep it on `127.0.0.1` (the default). See [SECURITY.md](SECURITY.md).
 
 ## Development
 ```bash
+git clone https://github.com/ftymoshchuk/pasteup.git
+cd pasteup
+python -m venv .venv
+source .venv/bin/activate
 pip install -e ".[dev]"
 ruff check .
 pytest
 ```
-CI runs the same on Python 3.11 and 3.13, against a regular install of the
-package and with ffmpeg present, so the preview-video tests encode real files.
-Its `ci-passed` job succeeds only when every other job does, and is the one
-check `main` requires.
+CI runs the same on Python 3.11, 3.12 and 3.13, against a regular install of
+the package and with ffmpeg present, so the preview-video tests encode real
+files. It also builds the package, checks the README renders on PyPI and
+installs the wheel. Its `ci-passed` job succeeds only when every other job
+does, and is the one check `main` requires.
 
 `scripts/protect-repo.sh` applies the repository's branch ruleset and security
 settings through the GitHub CLI; it needs `gh` signed in as a repository admin.
+
+### Releasing
+1. Bump `__version__` in `src/pasteup/__init__.py` and move the
+   `[Unreleased]` entries in `CHANGELOG.md` under a heading for that version.
+2. Merge that through a pull request.
+3. Tag the merge commit and push the tag, e.g.
+   `git tag v0.2.0 origin/main && git push origin v0.2.0`.
+
+The `Release` workflow then builds the package, refuses a tag that does not
+match the built version or a changelog that does not name it, runs the test
+suite against the built wheel, publishes to PyPI by trusted publishing (no
+token is stored anywhere), and installs the result back from PyPI to check it.
+PyPI trusts `release.yml` running in this repository's `pypi` environment.
 
 Project layout:
 - `src/pasteup/main.py`: the FastAPI app
@@ -67,7 +102,7 @@ Project layout:
 - `src/pasteup/services/`: scanning, page composition, collages, export, video
 - `src/pasteup/models/`: request and response schemas
 - `src/pasteup/templates/` and `src/pasteup/static/`: the UI
-- `src/pasteup/cli.py`: the `pasteup` command
+- `src/pasteup/cli.py`: the `pasteup` command; `shortcut.py` makes its launchers
 - `tests/`
 
 ---
@@ -116,7 +151,7 @@ Health check endpoint.
 
 **Response**
 ```json
-{"status": "ok"}
+{"status": "ok", "app": "pasteup", "version": "0.1.0"}
 ```
 
 ### `POST /api/jobs/scan-folder`
@@ -400,11 +435,11 @@ exporter, so a bad mullion upgrade still fails here.
 ---
 
 ## License
-Apache License 2.0, see [LICENSE](LICENSE). Security reports: see
-[SECURITY.md](SECURITY.md).
+Apache License 2.0, see [LICENSE](https://github.com/ftymoshchuk/pasteup/blob/main/LICENSE). Security reports:
+see [SECURITY.md](https://github.com/ftymoshchuk/pasteup/blob/main/SECURITY.md).
 
 The handwriting fonts the app ships with, [Caveat](https://fonts.google.com/specimen/Caveat)
 and [Patrick Hand](https://fonts.google.com/specimen/Patrick+Hand), are under the
 SIL Open Font License 1.1; their licence texts are in
-[src/pasteup/static/fonts](src/pasteup/static/fonts). They are bundled rather
+[src/pasteup/static/fonts](https://github.com/ftymoshchuk/pasteup/tree/main/src/pasteup/static/fonts). They are bundled rather
 than fetched, so the app needs no internet connection.

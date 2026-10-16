@@ -7,6 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
+from pasteup import __version__
 from pasteup.models.schemas import (
     BatchBundleResult,
     BatchCoverCollageGenerationRequest,
@@ -96,7 +97,8 @@ class _OutputOptions:
 
 @router.get("/health")
 def health_check() -> dict[str, str]:
-    return {"status": "ok"}
+    # "app" lets `pasteup` tell a running Pasteup from another program on its port.
+    return {"status": "ok", "app": "pasteup", "version": __version__}
 
 
 @router.post("/scan-folder", response_model=ScanResponse)

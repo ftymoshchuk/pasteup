@@ -1,0 +1,206 @@
+# Publish a tagged release to PyPI, the way sigrix-io/mullion does. Nothing else
+# in this repository publishes, and nothing here runs on a branch: a release is
+# a pushed `v*` tag, so publishing is an act with a name rather than a side
+# effect of a merge.
+#
+# Trusted publishing (OIDC) rather than an API token: the runner trades a
+# short-lived identity for the upload, so there is no long-lived secret in this
+# repository to store, leak or rotate. PyPI must be told which repository,
+# workflow file and environment it trusts: ftymoshchuk/pasteup, release.yml
+# and `pypi` (see `environment:` below).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Read-only by default. Only the publish job widens this, and only to the one
+# permission the OIDC exchange needs.
+permissions:
+  contents: read
+
+# Deliberately not cancelled in progress, unlike tests.yml: a run stopped
+# mid-upload can leave a release half-landed, and PyPI never accepts the same
+# version number twice, not even after the file is deleted.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Everything that can say no, said before anything leaves the runner.
+  build:
+    runs-on: ubuntu-latest
+    # A fork can push a tag to itself; it must not build the artifacts this
+    # repository's trusted publisher would then be asked to upload.
+    if: github.repository == 'ftymoshchuk/pasteup'
+    steps:
+      # The releases tests.yml runs on (its v5 and v6), pinned by commit: this
+      # runs once per release, the worst moment to meet an action's new major.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+
+      - run: python -m pip install build twine
+      - run: python -m build
+
+      # hatchling reads the version from src/pasteup/__init__.py; the tag is
+      # typed by hand, and nothing else makes the two agree. Tagging v0.2.0
+      # without the bump would publish 0.1.0 under a tag saying otherwise, or
+      # fail at the upload with an error naming neither cause.
+      - name: The tag names the version that was built
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          # pasteup-0.1.0-py3-none-any.whl -> 0.1.0. A wheel filename uses "-"
+          # as its separator, so a PEP 440 version never contains one.
+          built="$(basename "$(ls dist/*.whl)" | cut -d- -f2)"
+          echo "tag=${tag}  built=${built}"
+          if [ "${tag}" != "${built}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not name the packaged version ${built}. Bump __version__ in src/pasteup/__init__.py, or delete the tag and retag."
+            exit 1
+          fi
+
+      # Keep a Changelog puts the version in a heading, so both checks are
+      # exact. The second catches entries still filed under [Unreleased]: they
+      # are on the commit being tagged, so they ship while the changelog says
+      # they did not.
+      - name: The changelog names this version, and nothing is left unreleased
+        run: |
+          set -euo pipefail
+          export VERSION="${GITHUB_REF_NAME#v}"
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          version = os.environ["VERSION"]
+          text = pathlib.Path("CHANGELOG.md").read_text()
+
+
+          def fail(message: str) -> None:
+              # stdout, not stderr: that is where GitHub reads ::error:: from.
+              print(message)
+              raise SystemExit(1)
+
+
+          if f"## [{version}]" not in text:
+              fail(
+                  f"::error::CHANGELOG.md has no '## [{version}]' heading. Add it, or "
+                  "move the Unreleased entries under it, before tagging."
+              )
+
+          section = re.search(
+              r"^##\s*\[Unreleased\]\s*$(.*?)(?=^##\s|\Z)",
+              text,
+              re.MULTILINE | re.DOTALL,
+          )
+          if section:
+              leftover = [
+                  line
+                  for line in section.group(1).splitlines()
+                  if line.strip() and not line.lstrip().startswith("#")
+              ]
+              if leftover:
+                  fail(
+                      f"::error::CHANGELOG.md still files {len(leftover)} line(s) under "
+                      f"[Unreleased], starting {leftover[0].strip()[:60]!r}. They ship in "
+                      f"{version}: move them under '## [{version}]' before tagging."
+                  )
+          PY
+
+      # A README that renders on GitHub but not on PyPI is otherwise found at
+      # the moment of publishing.
+      - run: python -m twine check --strict dist/*
+
+      # The preview-video tests encode real files; without ffmpeg they skip.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
+
+      # tests.yml proves the source tree; this proves the artifact, the only
+      # thing that matters once its bytes are immutable on PyPI. A template or
+      # font missing from the wheel fails here.
+      - name: The built wheel installs and passes the suite
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/releasecheck
+          wheel="$(ls dist/*.whl)"
+          /tmp/releasecheck/bin/python -m pip install --quiet "${wheel}[dev]"
+          # The src layout leaves nothing in the checkout that `import pasteup`
+          # could find, so the suite can only be testing the wheel. Asserted
+          # rather than assumed.
+          /tmp/releasecheck/bin/python -c "import pasteup; assert 'site-packages' in pasteup.__file__, pasteup.__file__"
+          /tmp/releasecheck/bin/pasteup --version
+          /tmp/releasecheck/bin/python -m pytest -q tests/
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # Separate from the build, so a failure above cannot half-publish: this job
+  # starts only when every check passed, and builds nothing itself.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      # PyPI's trusted publisher names this environment alongside the
+      # repository and the workflow filename; all three must match what is set
+      # up there. It is also where to add a required reviewer, should a release
+      # ever need a second pair of eyes.
+      name: pypi
+      url: https://pypi.org/p/pasteup
+    permissions:
+      # The only elevated permission in this file: it mints the OIDC token PyPI
+      # exchanges for an upload, and lets the action attach attestations.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      # Pinned to the commit, not the tag: a tag can be moved by whoever owns
+      # the action, and this is the one step here holding a credential.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+  # An upload that succeeded is not yet a package anyone can install. Install
+  # it by name from PyPI, the way a user would, and check it is this version
+  # and carries the app's files.
+  verify:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+
+      - name: The published package installs by name and runs
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          python -m venv /tmp/published
+          # A fresh upload can take a few minutes to be served everywhere.
+          for attempt in $(seq 1 20); do
+            if /tmp/published/bin/python -m pip install --quiet --no-cache-dir "pasteup==${version}"; then
+              break
+            fi
+            if [ "${attempt}" = 20 ]; then
+              echo "::error::pasteup ${version} still cannot be installed from PyPI after 20 attempts."
+              exit 1
+            fi
+            sleep 15
+          done
+          cd /tmp
+          test "$(/tmp/published/bin/pasteup --version)" = "pasteup ${version}"
+          /tmp/published/bin/python - <<'PY'
+          import pathlib
+
+          import pasteup
+
+          root = pathlib.Path(pasteup.__file__).parent
+          for asset in ("templates/index.html", "static/js/app.js", "static/fonts/caveat-latin-700.woff2"):
+              assert (root / asset).is_file(), f"{asset} did not ship"
+          print("pasteup", pasteup.__version__, "installs from PyPI with its files")
+          PY
