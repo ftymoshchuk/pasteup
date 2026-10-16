@@ -14,6 +14,16 @@ All notable changes to Pasteup are recorded here. The format follows
   you choose. Typing or pasting a path still works.
   (`POST /api/jobs/browse-folder`)
 
+### Fixed
+- Hidden files are no longer counted as images. A Mac writes a hidden `._`
+  file beside the files it copies to an exFAT or FAT32 drive or to some network
+  shares, so such a bundle could scan as twice its size, and making sheets then
+  reported the extra files as unreadable.
+- Hidden folders, such as the `.Spotlight-V100` and `.Trashes` a Mac keeps on
+  those drives, and the `__MACOSX` folder left by unpacking a zip made on a
+  Mac, are no longer offered as bundles. Covers no longer take images from
+  them, nor from a `---Created---` folder inside the bundle.
+
 ## [0.1.0] - 2026-10-16
 
 The first release on PyPI.

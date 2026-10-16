@@ -158,7 +158,8 @@ def test_windows_hidden_and_system_folders_are_left_out(monkeypatch) -> None:
         result = SimpleNamespace(st_file_attributes=attributes)
         return SimpleNamespace(name=name, stat=lambda follow_symlinks=True: result)
 
-    assert folder_browser._is_hidden(entry("AppData", stat.FILE_ATTRIBUTE_HIDDEN))
-    assert folder_browser._is_hidden(entry("$Recycle.Bin", stat.FILE_ATTRIBUTE_HIDDEN | stat.FILE_ATTRIBUTE_SYSTEM))
-    assert folder_browser._is_hidden(entry(".cache"))
-    assert not folder_browser._is_hidden(entry("Pictures", stat.FILE_ATTRIBUTE_DIRECTORY))
+    assert folder_browser._has_hidden_attribute(entry("AppData", stat.FILE_ATTRIBUTE_HIDDEN))
+    assert folder_browser._has_hidden_attribute(
+        entry("$Recycle.Bin", stat.FILE_ATTRIBUTE_HIDDEN | stat.FILE_ATTRIBUTE_SYSTEM)
+    )
+    assert not folder_browser._has_hidden_attribute(entry("Pictures", stat.FILE_ATTRIBUTE_DIRECTORY))

@@ -132,6 +132,12 @@ Input scan supports the following image extensions (case-insensitive):
 
 Notes:
 - Folder scan is **non-recursive** (only files directly inside the selected folder).
+- Hidden files, whose names start with a dot, are skipped. Most are the `._`
+  files a Mac writes beside the files it copies to an exFAT or FAT32 drive or
+  to some network shares: they carry the image's extension but hold no image.
+- Hidden folders, `__MACOSX` (left by unpacking a zip made on a Mac) and
+  `---Created---` are never offered as bundles, and covers don't look inside
+  them.
 - Export output format supports `PNG` and `JPG`.
 
 ---
@@ -207,7 +213,7 @@ A blank `folder_path` lists the home folder.
 - `breadcrumbs` (list): `name` and `path` of each folder from the top of the
   drive down to this one.
 - `folders` (list): `name` and `path` of each folder inside, sorted, leaving
-  out hidden folders and `---Created---`.
+  out hidden folders, `__MACOSX` and `---Created---`.
 - `image_count` (int): supported images directly inside, counted as
   `scan-folder` counts them.
 - `places` (list): shortcuts: the home folder, its Desktop, Documents,
@@ -501,7 +507,7 @@ Symptoms:
 Fixes:
 - Confirm files are directly in the selected folder (non-recursive scan).
 - Confirm extensions are supported.
-- Check that files are not hidden/system placeholders.
+- Check the files aren't hidden: names starting with a dot are skipped.
 
 ### Permission errors
 Symptoms:

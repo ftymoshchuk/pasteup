@@ -14,7 +14,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
-from pasteup.services.folder_scanner import SUPPORTED_EXTENSIONS, is_generated_output_folder
+from pasteup.services.folder_scanner import is_ignored_folder, is_image_file_name
 
 # Offered as shortcuts when the home folder has them.
 STANDARD_FOLDER_NAMES = ("Desktop", "Documents", "Downloads", "Pictures")
@@ -73,10 +73,10 @@ def _link(folder: Path) -> dict[str, str]:
 
 
 def _read_folder(folder: Path) -> tuple[list[str], int]:
-    """The visible folders inside ``folder``, and how many images it holds.
+    """The folders inside ``folder`` worth showing, and how many images it holds.
 
-    Images are counted as the scan counts them, as supported files directly
-    inside, so the number shown matches what the scan then finds.
+    Both follow the scan's rules: no folder it ignores is shown, and images are
+    counted as it counts them, so the number shown matches what it then finds.
     """
     folder_names: list[str] = []
     image_count = 0
@@ -84,18 +84,16 @@ def _read_folder(folder: Path) -> tuple[list[str], int]:
         for entry in entries:
             try:
                 if entry.is_dir():
-                    if not _is_hidden(entry) and not is_generated_output_folder(Path(entry.name)):
+                    if not is_ignored_folder(Path(entry.name)) and not _has_hidden_attribute(entry):
                         folder_names.append(entry.name)
-                elif entry.is_file() and Path(entry.name).suffix.lower() in SUPPORTED_EXTENSIONS:
+                elif entry.is_file() and is_image_file_name(entry.name):
                     image_count += 1
             except OSError:
                 continue
     return sorted(folder_names, key=lambda name: (name.lower(), name)), image_count
 
 
-def _is_hidden(entry: os.DirEntry) -> bool:
-    if entry.name.startswith("."):
-        return True
+def _has_hidden_attribute(entry: os.DirEntry) -> bool:
     if not _ON_WINDOWS:
         return False
     # Not following links, so a hidden junction such as "Documents and

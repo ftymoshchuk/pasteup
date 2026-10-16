@@ -38,6 +38,7 @@ from mullion import (
 )
 from pasteup.services.folder_scanner import (
     is_generated_output_folder,
+    is_ignored_folder,
     list_supported_image_paths,
     resolve_folder_path,
     scan_folder,
@@ -680,7 +681,7 @@ def _list_detected_bundle_folders(*, parent_folder: Path, created_root_name: str
             for item in parent_folder.iterdir()
             if item.is_dir()
             and item.name != created_root_name
-            and not is_generated_output_folder(item)
+            and not is_ignored_folder(item)
         ],
         key=lambda path: (path.name.lower(), path.name),
     )
