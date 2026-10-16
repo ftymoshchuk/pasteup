@@ -15,6 +15,8 @@ from pasteup.models.schemas import (
     BatchCoverCollageResult,
     BatchGenerationRequest,
     BatchGenerationResponse,
+    BrowseFolderRequest,
+    BrowseFolderResponse,
     CoverCollageGenerationRequest,
     CoverCollageResponse,
     GenerationRequest,
@@ -28,6 +30,7 @@ from pasteup.models.schemas import (
 from pasteup.services.cover_collage import compose_cover_collage
 from mullion import DEFAULT_TOLERANCE, BackgroundCleanMode
 from pasteup.services.exporter import export_pages
+from pasteup.services.folder_browser import browse_folder
 from mullion import (
     DEFAULT_DPI,
     PageGeometry,
@@ -118,6 +121,11 @@ def scan_folder_job(payload: ScanRequest) -> ScanResponse:
     )
 
     return ScanResponse(**scan_result)
+
+
+@router.post("/browse-folder", response_model=BrowseFolderResponse)
+def browse_folder_job(payload: BrowseFolderRequest) -> BrowseFolderResponse:
+    return BrowseFolderResponse(**browse_folder(payload.folder_path))
 
 
 @router.post("/scan-selected-batch-folders", response_model=SelectedBatchFolderValidationResponse)

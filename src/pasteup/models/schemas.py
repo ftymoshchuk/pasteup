@@ -117,6 +117,25 @@ class ScanResponse(BaseModel):
     message: str
 
 
+class BrowseFolderRequest(BaseModel):
+    folder_path: str = Field(default="", description="The folder to list. Blank lists the home folder.")
+
+
+class FolderLink(BaseModel):
+    name: str
+    path: str
+
+
+class BrowseFolderResponse(BaseModel):
+    path: str = Field(description="The folder listed: the one asked for, or the nearest that could be listed.")
+    parent_path: str | None = Field(description="The folder above it; null at the top of a drive.")
+    breadcrumbs: list[FolderLink] = Field(description="Each folder from the top of the drive down to this one.")
+    folders: list[FolderLink] = Field(description="The folders inside, without hidden ones or ---Created---.")
+    image_count: int = Field(description="Supported images directly inside, as the scan counts them.")
+    places: list[FolderLink] = Field(description="Shortcuts: home, its standard folders, and drives on Windows.")
+    message: str = Field(description="Why another folder was listed than the one asked for; empty otherwise.")
+
+
 class SelectedBatchFolderValidationRequest(BaseModel):
     parent_folder_path: str
     selected_subfolders: list[str] = Field(

@@ -62,7 +62,10 @@ def test_app_js_checks_every_listed_bundle_after_a_batch_scan() -> None:
     script = APP_JS.read_text()
 
     assert 'generationState.selectedBatchFolders = generationState.mode === "batch" && selectedBatchFolders.length === 0' in script
-    assert 'if (generationState.mode === "batch" && hasSelectedBatchFolders()) {\n      await validateSelectedBatchFolders();' in script
+    assert 'if (generationState.mode === "batch" && hasSelectedBatchFolders()) {\n    await validateSelectedBatchFolders();' in script
+    # Both ways of picking a folder, scanning a typed path and choosing one in
+    # the folder browser, go on to check the bundles.
+    assert script.count("await runExclusive(scanFolderAndCheckBundles);") == 2
 
 
 def test_app_js_scans_the_folder_picked_inside_a_single_bundle_folder() -> None:
@@ -71,6 +74,28 @@ def test_app_js_scans_the_folder_picked_inside_a_single_bundle_folder() -> None:
 
     assert 'inputFolderEl.value = subfolderPickerEl.value;' in script
     assert 'await runExclusive(() => scanCurrentFolder());' in script
+
+
+def test_index_offers_a_folder_browser_beside_the_folder_field() -> None:
+    html = INDEX_TEMPLATE.read_text()
+    normalized = _squash_whitespace(html)
+
+    # Named after the field's label, so it reads "Browse… Bundle folder".
+    assert 'aria-labelledby="browse-folder-button input-folder-label"' in html
+    assert '<dialog id="folder-browser" class="folder-browser"' in html
+    assert 'button id="folder-browser-choose" class="primary-button" type="button">Use this folder</button>' in normalized
+
+
+def test_app_js_browses_through_the_api_and_scans_the_folder_chosen() -> None:
+    script = APP_JS.read_text()
+
+    assert 'postJson("/api/jobs/browse-folder", { folder_path: folderPath })' in script
+    assert "folderBrowserEl.showModal();" in script
+    # Only the latest listing is drawn, so a slow one can't replace a newer one.
+    assert "if (requestId !== folderBrowserState.requestId) {\n    return;\n  }" in script
+    assert "inputFolderEl.value = chosenPath;" in script
+    # Disabled with the scan buttons while a job runs.
+    assert "[scanButton, batchScanButton, browseFolderButton].forEach((button) => {" in script
 
 
 def test_app_js_renders_batch_cover_collage_results_per_folder() -> None:

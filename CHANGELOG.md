@@ -7,6 +7,13 @@ All notable changes to Pasteup are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Browse…** beside the folder field opens a folder browser, so a folder can be
+  picked instead of typed. It opens at the folder in the field, or at your home
+  folder, says how many images the folder you're in holds, and scans the one
+  you choose. Typing or pasting a path still works.
+  (`POST /api/jobs/browse-folder`)
+
 ## [0.1.0] - 2026-10-16
 
 The first release on PyPI.

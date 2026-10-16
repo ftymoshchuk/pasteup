@@ -123,3 +123,4 @@ def test_requests_for_another_host_are_refused() -> None:
 
     assert rebinding_client.get("/").status_code == 400
     assert rebinding_client.post("/api/jobs/scan-folder", json={"folder_path": "/"}).status_code == 400
+    assert rebinding_client.post("/api/jobs/browse-folder", json={"folder_path": "/"}).status_code == 400

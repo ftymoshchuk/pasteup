@@ -114,7 +114,8 @@ PyPI trusts `release.yml` running in this repository's `pypi` environment.
 Project layout:
 - `src/pasteup/main.py`: the FastAPI app
 - `src/pasteup/routes/`: the page and the `/api/jobs` endpoints
-- `src/pasteup/services/`: scanning, page composition, collages, export, video
+- `src/pasteup/services/`: scanning and browsing folders, page composition,
+  collages, export, video
 - `src/pasteup/models/`: request and response schemas
 - `src/pasteup/templates/` and `src/pasteup/static/`: the UI
 - `src/pasteup/cli.py`: the `pasteup` command; `shortcut.py` makes its launchers
@@ -185,6 +186,34 @@ Validates a folder and scans for supported image files.
 - `sample_files` (list[str]): up to 5 sorted sample filenames.
 - `estimated_pages` (int): `image_count // 12` (whole pages only).
 - `message` (str): summary or error detail.
+
+### `POST /api/jobs/browse-folder`
+Lists the folders inside a folder, for the folder browser behind **Browse…**. A
+page can't read the path of a folder picked with the browser's own file
+chooser, so the UI browses through this instead.
+
+**Request body**
+```json
+{
+  "folder_path": "~/Pictures"
+}
+```
+A blank `folder_path` lists the home folder.
+
+**Response fields**
+- `path` (str): the folder listed. One that does not exist or cannot be opened
+  gives way to the nearest folder above it that can, and `message` says why.
+- `parent_path` (str | null): the folder above it; `null` at the top of a drive.
+- `breadcrumbs` (list): `name` and `path` of each folder from the top of the
+  drive down to this one.
+- `folders` (list): `name` and `path` of each folder inside, sorted, leaving
+  out hidden folders and `---Created---`.
+- `image_count` (int): supported images directly inside, counted as
+  `scan-folder` counts them.
+- `places` (list): shortcuts: the home folder, its Desktop, Documents,
+  Downloads and Pictures folders when it has them, and each drive on Windows.
+- `message` (str): empty unless a different folder was listed than the one
+  asked for.
 
 ### `POST /api/jobs/scan-selected-batch-folders`
 Validates selected batch subfolders under a scanned parent folder and reports which selected folders are ready for generation.
@@ -369,8 +398,10 @@ Makes one cover per bundle folder, as `/generate-all-folders` does for sheets.
 ## Using the app
 1. Run `pasteup`; it opens in your browser.
 2. **Pick your clip art.** Choose **One bundle** (a folder of images) or **Many
-   bundles** (a folder with one folder inside per bundle), enter the folder and
-   click **Scan folder**. Results go in a `---Created---` folder next to it.
+   bundles** (a folder with one folder inside per bundle), then click
+   **Browse…**: open folders until you're in the right one, and **Use this
+   folder** scans it. Or type or paste its path and click **Scan folder**.
+   Results go in a `---Created---` folder next to it.
    - One bundle: **Folder check** says how many images it found and how many
      full sheets of 12 they make. If the folder holds only other folders, pick
      one under **Choose folders**.
@@ -481,6 +512,12 @@ Fixes:
 - Verify read permission on input folder and files.
 - Verify write permission on output folder.
 - Try a user-owned directory (for example inside your home directory).
+
+### "Pasteup isn't allowed to open" Desktop, Documents or Downloads on a Mac
+macOS asks before a program reads these folders, and Pasteup reads them as the
+terminal app it runs in (Terminal, for the `pasteup --shortcut` launcher). If
+that was refused, turn the folder on for your terminal app under **System
+Settings › Privacy & Security › Files and Folders**, then restart Pasteup.
 
 ---
 

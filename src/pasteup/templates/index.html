@@ -62,7 +62,16 @@
 
         <div class="field">
           <label id="input-folder-label" class="field-label" for="input-folder">Bundle folder</label>
-          <input id="input-folder" type="text" value="{{ defaults.input_folder }}" placeholder="e.g. ~/Pictures/clip-art/bundle-01" autocomplete="off" spellcheck="false" aria-describedby="folder-step-copy" />
+          <div class="folder-field">
+            <input id="input-folder" type="text" value="{{ defaults.input_folder }}" placeholder="e.g. ~/Pictures/clip-art/bundle-01" autocomplete="off" spellcheck="false" aria-describedby="folder-step-copy" />
+            <button id="browse-folder-button" class="secondary-button" type="button" aria-haspopup="dialog" aria-labelledby="browse-folder-button input-folder-label">
+              <svg class="doodle doodle--small" viewBox="0 0 48 48" aria-hidden="true">
+                <path class="doodle__fill" d="M5.6 13.2c0-2 1.4-3.4 3.4-3.4h8.4c1.4 0 2.2.6 3 1.8l1.8 2.6h16.6c2 0 3.4 1.6 3.4 3.6l-.4 18.4c0 2-1.6 3.4-3.4 3.4H9.2c-2 0-3.4-1.6-3.4-3.4z" />
+                <path d="M6 20.4c12-.8 24.2-.8 36.2-.2" />
+              </svg>
+              Browse…
+            </button>
+          </div>
         </div>
         <div class="field">
           <label id="output-folder-label" class="field-label" for="output-folder">Saves to</label>
@@ -303,6 +312,35 @@
     <footer class="site-footer">
       <p>Pasteup runs on your computer; your images never leave it. <a href="/docs">API docs</a></p>
     </footer>
+
+    <dialog id="folder-browser" class="folder-browser" aria-labelledby="folder-browser-title" aria-describedby="folder-browser-help">
+      <div class="folder-browser__body">
+        <div>
+          <h2 id="folder-browser-title" class="step__title">Choose the bundle folder</h2>
+          <p id="folder-browser-help" class="field-help">Click a folder to open it. Once you're in the right one, click “Use this folder”.</p>
+        </div>
+
+        <nav aria-label="Places">
+          <ul id="folder-browser-places" class="folder-browser__places"></ul>
+        </nav>
+
+        <nav aria-label="Where you are">
+          <ol id="folder-browser-crumbs" class="folder-browser__crumbs"></ol>
+        </nav>
+
+        <p id="folder-browser-notice" class="folder-browser__notice" role="alert" hidden></p>
+
+        <ul id="folder-browser-list" class="folder-browser__list" aria-label="Folders inside"></ul>
+
+        <div class="folder-browser__footer">
+          <p id="folder-browser-status" class="folder-browser__status" role="status" aria-live="polite"></p>
+          <div class="folder-browser__actions">
+            <button id="folder-browser-cancel" class="secondary-button" type="button">Cancel</button>
+            <button id="folder-browser-choose" class="primary-button" type="button">Use this folder</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
 
     <script src="/static/js/app.js"></script>
   </body>

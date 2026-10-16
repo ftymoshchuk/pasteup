@@ -81,6 +81,16 @@ const batchSelectionSummaryEl = document.getElementById("batch-selection-summary
 const batchSelectionStatusEl = document.getElementById("batch-selection-status");
 const videoSettingsEl = document.getElementById("video-settings");
 const backgroundCleanSettingsEl = document.getElementById("background-clean-settings");
+const browseFolderButton = document.getElementById("browse-folder-button");
+const folderBrowserEl = document.getElementById("folder-browser");
+const folderBrowserTitleEl = document.getElementById("folder-browser-title");
+const folderBrowserPlacesEl = document.getElementById("folder-browser-places");
+const folderBrowserCrumbsEl = document.getElementById("folder-browser-crumbs");
+const folderBrowserNoticeEl = document.getElementById("folder-browser-notice");
+const folderBrowserListEl = document.getElementById("folder-browser-list");
+const folderBrowserStatusEl = document.getElementById("folder-browser-status");
+const folderBrowserCancelButton = document.getElementById("folder-browser-cancel");
+const folderBrowserChooseButton = document.getElementById("folder-browser-choose");
 
 const generationState = {
   mode: document.querySelector('input[name="generation-mode"]:checked')?.value || "single",
@@ -756,7 +766,7 @@ function updateOutputActionState() {
   coverCollageButton.textContent = getCoverCollageButtonLabel();
   generateButton.disabled = !generationReady || generationState.busy;
   coverCollageButton.disabled = !coverCollageReady || generationState.busy;
-  [scanButton, batchScanButton].forEach((button) => {
+  [scanButton, batchScanButton, browseFolderButton].forEach((button) => {
     if (button) {
       button.disabled = generationState.busy;
     }
@@ -1426,15 +1436,17 @@ async function scanCurrentFolder({ preserveSubfolderPicker = false } = {}) {
   return result;
 }
 
+async function scanFolderAndCheckBundles() {
+  await scanCurrentFolder({ preserveSubfolderPicker: true });
+  // Check the picked bundles straight away, so making images for all the
+  // bundles in a folder takes one click.
+  if (generationState.mode === "batch" && hasSelectedBatchFolders()) {
+    await validateSelectedBatchFolders();
+  }
+}
+
 scanButton?.addEventListener("click", async () => {
-  await runExclusive(async () => {
-    await scanCurrentFolder({ preserveSubfolderPicker: true });
-    // Check the picked bundles straight away, so making images for all the
-    // bundles in a folder takes one click.
-    if (generationState.mode === "batch" && hasSelectedBatchFolders()) {
-      await validateSelectedBatchFolders();
-    }
-  });
+  await runExclusive(scanFolderAndCheckBundles);
 });
 
 // The check card describes the picked bundles, so it follows the picks:
@@ -1564,6 +1576,213 @@ useSubfolderButton?.addEventListener("click", async () => {
   resetSingleFolderSelectionState();
   syncDerivedOutputPath();
   await runExclusive(() => scanCurrentFolder());
+});
+
+// The folder browser. A page can't learn the path of a folder picked with the
+// browser's own file chooser, so this one lists folders through Pasteup:
+// clicking a folder opens it, and "Use this folder" takes the one shown.
+const folderBrowserState = {
+  path: "",
+  parentPath: null,
+  breadcrumbs: [],
+  // Where browsing got to last time, to start from when no path is typed.
+  lastPath: "",
+  // Only the latest listing is drawn, so a slow one can't replace a newer one.
+  requestId: 0,
+};
+
+function openFolderBrowser() {
+  if (!folderBrowserEl || folderBrowserEl.open || generationState.busy) {
+    return;
+  }
+
+  folderBrowserTitleEl.textContent = `Choose the ${getSelectedGenerationModeConfig().inputLabel.toLowerCase()}`;
+  folderBrowserState.path = "";
+  folderBrowserState.parentPath = null;
+  folderBrowserState.breadcrumbs = [];
+  folderBrowserPlacesEl.replaceChildren();
+  folderBrowserCrumbsEl.replaceChildren();
+  folderBrowserListEl.replaceChildren();
+  showFolderBrowserNotice("");
+  folderBrowserStatusEl.textContent = "Opening…";
+  folderBrowserChooseButton.disabled = true;
+  folderBrowserEl.showModal();
+  // A typed path is where browsing starts, so it works as a shortcut too.
+  showFolderInBrowser(readMainInputFolderPath() || folderBrowserState.lastPath);
+}
+
+async function showFolderInBrowser(folderPath, { focusPath = "" } = {}) {
+  const requestId = ++folderBrowserState.requestId;
+  folderBrowserListEl.setAttribute("aria-busy", "true");
+  const { ok, data, errorMessage } = await postJson("/api/jobs/browse-folder", { folder_path: folderPath });
+  if (requestId !== folderBrowserState.requestId) {
+    return;
+  }
+
+  folderBrowserListEl.setAttribute("aria-busy", "false");
+  if (!ok) {
+    showFolderBrowserNotice(errorMessage);
+    if (!folderBrowserState.path) {
+      folderBrowserStatusEl.textContent = "";
+    }
+    return;
+  }
+
+  renderFolderBrowser(data, focusPath);
+}
+
+function renderFolderBrowser(listing, focusPath = "") {
+  const folders = Array.isArray(listing.folders) ? listing.folders : [];
+  const breadcrumbs = Array.isArray(listing.breadcrumbs) ? listing.breadcrumbs : [];
+  const places = Array.isArray(listing.places) ? listing.places : [];
+  folderBrowserState.path = listing.path;
+  folderBrowserState.lastPath = listing.path;
+  folderBrowserState.parentPath = listing.parent_path || null;
+  folderBrowserState.breadcrumbs = breadcrumbs;
+
+  folderBrowserPlacesEl.replaceChildren(...places.map((place) => {
+    const button = createFolderButton(place, "folder-browser__place");
+    if (place.path === listing.path) {
+      button.setAttribute("aria-current", "true");
+    }
+    return wrapInListItem(button);
+  }));
+
+  folderBrowserCrumbsEl.replaceChildren(...breadcrumbs.map((crumb, index) => {
+    if (index < breadcrumbs.length - 1) {
+      return wrapInListItem(createFolderButton(crumb, "folder-browser__crumb"));
+    }
+
+    const here = document.createElement("span");
+    here.className = "folder-browser__here";
+    here.setAttribute("aria-current", "location");
+    here.textContent = crumb.name;
+    return wrapInListItem(here);
+  }));
+
+  folderBrowserListEl.setAttribute("aria-label", `Folders inside ${breadcrumbs.at(-1)?.name || listing.path}`);
+  if (folders.length > 0) {
+    folderBrowserListEl.replaceChildren(...folders.map((folder) => wrapInListItem(createFolderButton(folder, "folder-browser__folder"))));
+  } else {
+    const emptyItem = document.createElement("li");
+    emptyItem.className = "folder-browser__empty";
+    emptyItem.textContent = "No folders inside.";
+    folderBrowserListEl.replaceChildren(emptyItem);
+  }
+  folderBrowserListEl.scrollTop = 0;
+
+  showFolderBrowserNotice(listing.message || "");
+  folderBrowserStatusEl.textContent = describeFolderContents(listing.image_count ?? 0, folders.length);
+  folderBrowserChooseButton.disabled = false;
+
+  // Keyboard focus stays in the list: on the folder just come up out of, or
+  // else the first. Only that one is in the tab order; arrow keys move on.
+  const folderButtons = [...folderBrowserListEl.querySelectorAll("button")];
+  const focusTarget = folderButtons.find((button) => button.dataset.path === focusPath) || folderButtons[0];
+  folderButtons.forEach((button) => {
+    button.tabIndex = button === focusTarget ? 0 : -1;
+  });
+  (focusTarget || folderBrowserChooseButton).focus();
+}
+
+function createFolderButton({ name, path }, className) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.dataset.path = path;
+  button.textContent = name;
+  return button;
+}
+
+function wrapInListItem(child) {
+  const item = document.createElement("li");
+  item.append(child);
+  return item;
+}
+
+function showFolderBrowserNotice(message) {
+  folderBrowserNoticeEl.textContent = message;
+  folderBrowserNoticeEl.hidden = !message;
+}
+
+function describeFolderContents(imageCount, folderCount) {
+  const images = imageCount > 0 ? pluralize(imageCount, "image") : "";
+  const folders = folderCount > 0 ? pluralize(folderCount, "folder") : "";
+  if (images && folders) {
+    return `${images} and ${folders} here.`;
+  }
+  if (images) {
+    return `${images} here.`;
+  }
+  return folders ? `${folders} here, no images.` : "No images or folders here.";
+}
+
+// Going up to a folder on the current path lands on the folder just left.
+function childOnCurrentPath(folderPath) {
+  const { breadcrumbs } = folderBrowserState;
+  const index = breadcrumbs.findIndex((crumb) => crumb.path === folderPath);
+  return index >= 0 && index < breadcrumbs.length - 1 ? breadcrumbs[index + 1].path : "";
+}
+
+async function useBrowsedFolder() {
+  const chosenPath = folderBrowserState.path;
+  if (!chosenPath || generationState.busy) {
+    return;
+  }
+
+  folderBrowserEl.close();
+  // As if the path had been typed in, then scanned.
+  inputFolderEl.value = chosenPath;
+  // A long path shows its end, the folder's own name, rather than its start.
+  inputFolderEl.scrollLeft = inputFolderEl.scrollWidth;
+  resetSingleFolderSelectionState();
+  syncDerivedOutputPath();
+  resetScanReadyState();
+  resetCoverCollageIncludeList();
+  await runExclusive(scanFolderAndCheckBundles);
+  // The scan disables Browse, which drops keyboard focus back to the page.
+  if (document.activeElement === document.body) {
+    browseFolderButton?.focus();
+  }
+}
+
+browseFolderButton?.addEventListener("click", openFolderBrowser);
+folderBrowserCancelButton?.addEventListener("click", () => folderBrowserEl.close());
+folderBrowserChooseButton?.addEventListener("click", useBrowsedFolder);
+
+// Places, the path and the folders are all buttons carrying the folder they open.
+folderBrowserEl?.addEventListener("click", (event) => {
+  const button = event.target.closest?.("button[data-path]");
+  if (button) {
+    showFolderInBrowser(button.dataset.path, { focusPath: childOnCurrentPath(button.dataset.path) });
+  }
+});
+
+folderBrowserEl?.addEventListener("keydown", (event) => {
+  // Backspace goes up a level, as in a file manager.
+  if (event.key === "Backspace" && folderBrowserState.parentPath) {
+    event.preventDefault();
+    showFolderInBrowser(folderBrowserState.parentPath, { focusPath: folderBrowserState.path });
+    return;
+  }
+
+  const folderButtons = [...folderBrowserListEl.querySelectorAll("button")];
+  const index = folderButtons.indexOf(document.activeElement);
+  const nextIndex = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: folderButtons.length - 1 }[event.key];
+  if (index < 0 || nextIndex === undefined) {
+    return;
+  }
+
+  event.preventDefault();
+  const next = folderButtons[Math.min(Math.max(nextIndex, 0), folderButtons.length - 1)];
+  folderButtons[index].tabIndex = -1;
+  next.tabIndex = 0;
+  next.focus();
+});
+
+// A listing still on its way when the browser closes is dropped.
+folderBrowserEl?.addEventListener("close", () => {
+  folderBrowserState.requestId += 1;
 });
 
 async function runCoverCollage() {
