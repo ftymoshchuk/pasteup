@@ -19,23 +19,41 @@ publishing: cut out by hand and pasted onto a layout board.
 - **Batch mode:** process every bundle folder under a parent folder in one go.
 
 ## Install
-Requires Python 3.11 or newer. The preview video also needs
-[ffmpeg](https://ffmpeg.org/) on `PATH`.
+You need Python 3.11 or newer. Preview videos also need
+[ffmpeg](https://ffmpeg.org/download.html); everything else works without it.
+
+Install Pasteup as a command of its own with [pipx](https://pipx.pypa.io) or
+[uv](https://docs.astral.sh/uv/), with no virtualenv to manage:
 
 ```bash
-git clone https://github.com/ftymoshchuk/pasteup.git
-cd pasteup
-python -m venv .venv
-source .venv/bin/activate
-pip install .
+pipx install git+https://github.com/ftymoshchuk/pasteup.git
+# or
+uv tool install git+https://github.com/ftymoshchuk/pasteup.git
+```
+
+To update it later: `pipx upgrade pasteup` or `uv tool upgrade pasteup`.
+
+To try it without installing anything:
+```bash
+uvx --from git+https://github.com/ftymoshchuk/pasteup.git pasteup
 ```
 
 ## Run
 ```bash
 pasteup
 ```
-Then open `http://127.0.0.1:8000/` (API docs: `http://127.0.0.1:8000/docs`).
-`pasteup --help` lists the options, and `python -m pasteup` works too.
+Pasteup starts and opens in your browser. Keep its window open while you use
+it, and press Ctrl+C there to stop it. Running `pasteup` again while it runs
+just opens it again, and if another program has port 8000, Pasteup takes the
+next free port and says which.
+
+**To start it with a double-click,** run `pasteup --shortcut` once. It puts a
+launcher on your desktop (`Pasteup.command` on macOS, `Pasteup.bat` on
+Windows) or in your applications menu on Linux. Run it again if you reinstall
+Pasteup somewhere else.
+
+`pasteup --help` lists the options, among them `--no-browser` and `--port`;
+`python -m pasteup` works too. The API docs are at `/docs`.
 
 Pasteup reads and writes files at the paths you give it and has no login, so
 keep it on `127.0.0.1` (the default). See [SECURITY.md](SECURITY.md).
@@ -49,6 +67,10 @@ keep it on `127.0.0.1` (the default). See [SECURITY.md](SECURITY.md).
 
 ## Development
 ```bash
+git clone https://github.com/ftymoshchuk/pasteup.git
+cd pasteup
+python -m venv .venv
+source .venv/bin/activate
 pip install -e ".[dev]"
 ruff check .
 pytest
@@ -67,7 +89,7 @@ Project layout:
 - `src/pasteup/services/`: scanning, page composition, collages, export, video
 - `src/pasteup/models/`: request and response schemas
 - `src/pasteup/templates/` and `src/pasteup/static/`: the UI
-- `src/pasteup/cli.py`: the `pasteup` command
+- `src/pasteup/cli.py`: the `pasteup` command; `shortcut.py` makes its launchers
 - `tests/`
 
 ---
@@ -116,7 +138,7 @@ Health check endpoint.
 
 **Response**
 ```json
-{"status": "ok"}
+{"status": "ok", "app": "pasteup", "version": "0.1.0"}
 ```
 
 ### `POST /api/jobs/scan-folder`
