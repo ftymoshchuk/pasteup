@@ -165,6 +165,8 @@ Behavior defaults:
 - Images per page: `12` (fixed 4x3).
 - Export naming: `page_001`, `page_002`, ...
 - Export conflict handling: never overwrite existing `page_###`; continue at next index.
+- Upscaled images keep their image's name, in `Upscaled/PNG` and `Upscaled/JPG`,
+  so upscaling again replaces the files the last run made.
 
 ---
 
@@ -194,6 +196,10 @@ Validates a folder and scans for supported image files.
 - `image_count` (int): number of supported files found.
 - `sample_files` (list[str]): up to 5 sorted sample filenames.
 - `estimated_pages` (int): `image_count // 12` (whole pages only).
+- `available_subfolders` (list): when the folder has no images of its own, the
+  folders inside it, each with `display_name` and `full_path`, for picking one
+  bundle or listing many. Hidden folders, `__MACOSX` and `---Created---` are
+  left out. Empty when the folder has images.
 - `message` (str): summary or error detail.
 
 ### `POST /api/jobs/browse-folder`

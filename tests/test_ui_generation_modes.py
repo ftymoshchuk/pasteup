@@ -147,6 +147,16 @@ def test_app_js_reads_result_details_from_fields_not_prose() -> None:
     assert 'result.backgrounds_cleaned > 0' in script
 
 
+def test_app_js_returns_focus_to_the_button_that_started_an_action() -> None:
+    """Disabling the focused button used to leave keyboard users at the top of the page."""
+    script = APP_JS.read_text()
+    run_exclusive = script[script.index("async function runExclusive(action) {") :]
+    run_exclusive = run_exclusive[: run_exclusive.index("\n}\n")]
+
+    assert "const startedFrom = document.activeElement;" in run_exclusive
+    assert "startedFrom.focus();" in run_exclusive
+
+
 def test_app_js_routes_every_request_through_the_error_aware_helper() -> None:
     """A failed request used to render as "Finished — Done."."""
     script = APP_JS.read_text()

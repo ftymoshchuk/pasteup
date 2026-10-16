@@ -163,17 +163,24 @@ function describeErrorResponse(response, data) {
 }
 
 // One request-backed action at a time: while it runs, the action buttons are
-// disabled, so a second click cannot start a duplicate export.
+// disabled, so a second click cannot start a duplicate export. Disabling the
+// focused button drops keyboard focus to the page, so afterwards it goes back
+// to that button, rather than leaving a keyboard user at the top of the page.
 async function runExclusive(action) {
   if (generationState.busy) {
     return;
   }
 
+  const startedFrom = document.activeElement;
   setBusy(true);
   try {
     await action();
   } finally {
     setBusy(false);
+    // Unless focus has been put somewhere else in the meantime.
+    if (document.activeElement === document.body && startedFrom !== document.body && startedFrom?.isConnected) {
+      startedFrom.focus();
+    }
   }
 }
 
@@ -1867,7 +1874,8 @@ async function useBrowsedFolder() {
   resetScanReadyState();
   resetCoverCollageIncludeList();
   await runExclusive(scanFolderAndCheckBundles);
-  // The scan disables Browse, which drops keyboard focus back to the page.
+  // Where closing the dialog didn't hand focus back to Browse, there was no
+  // button for runExclusive to return it to.
   if (document.activeElement === document.body) {
     browseFolderButton?.focus();
   }

@@ -27,6 +27,8 @@ All notable changes to Pasteup are recorded here. The format follows
   those drives, and the `__MACOSX` folder left by unpacking a zip made on a
   Mac, are no longer offered as bundles. Covers no longer take images from
   them, nor from a `---Created---` folder inside the bundle.
+- After a scan or making images, keyboard focus returns to the button that
+  started it, instead of falling back to the top of the page.
 
 ## [0.1.0] - 2026-10-16
 
