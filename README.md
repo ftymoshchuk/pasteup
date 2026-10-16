@@ -14,6 +14,8 @@ publishing: cut out by hand and pasted onto a layout board.
   main image.
 - **Preview video:** an MP4 slideshow of the sheets, exactly as long as you ask
   (Etsy's listing videos run 5 to 15 s).
+- **Upscaled images:** every image made 2x, 3x or 4x bigger, saved in an
+  `Upscaled` folder as a PNG, which keeps any transparency, and a JPG on white.
 - **Clean-up:** transparent PNGs land on white instead of black, phone photos
   are turned upright, and near-white backgrounds can be removed.
 - **Batch mode:** process every bundle folder under a parent folder in one go.
@@ -114,7 +116,8 @@ PyPI trusts `release.yml` running in this repository's `pypi` environment.
 Project layout:
 - `src/pasteup/main.py`: the FastAPI app
 - `src/pasteup/routes/`: the page and the `/api/jobs` endpoints
-- `src/pasteup/services/`: scanning, page composition, collages, export, video
+- `src/pasteup/services/`: scanning and browsing folders, page composition,
+  collages, export, video
 - `src/pasteup/models/`: request and response schemas
 - `src/pasteup/templates/` and `src/pasteup/static/`: the UI
 - `src/pasteup/cli.py`: the `pasteup` command; `shortcut.py` makes its launchers
@@ -131,6 +134,12 @@ Input scan supports the following image extensions (case-insensitive):
 
 Notes:
 - Folder scan is **non-recursive** (only files directly inside the selected folder).
+- Hidden files, whose names start with a dot, are skipped. Most are the `._`
+  files a Mac writes beside the files it copies to an exFAT or FAT32 drive or
+  to some network shares: they carry the image's extension but hold no image.
+- Hidden folders, `__MACOSX` (left by unpacking a zip made on a Mac) and
+  `---Created---` are never offered as bundles, and covers don't look inside
+  them.
 - Export output format supports `PNG` and `JPG`.
 
 ---
@@ -149,6 +158,7 @@ Default UI values:
 - `background_tolerance`: `240`
 - `background_feather`: `1`
 - `include_partial_page`: `false`
+- upscaling `scale`: `2` (also `3` or `4`)
 
 Behavior defaults:
 - Scan sample size: first `5` files (`sample_files`) in sorted order.
@@ -185,6 +195,34 @@ Validates a folder and scans for supported image files.
 - `sample_files` (list[str]): up to 5 sorted sample filenames.
 - `estimated_pages` (int): `image_count // 12` (whole pages only).
 - `message` (str): summary or error detail.
+
+### `POST /api/jobs/browse-folder`
+Lists the folders inside a folder, for the folder browser behind **Browse…**. A
+page can't read the path of a folder picked with the browser's own file
+chooser, so the UI browses through this instead.
+
+**Request body**
+```json
+{
+  "folder_path": "~/Pictures"
+}
+```
+A blank `folder_path` lists the home folder.
+
+**Response fields**
+- `path` (str): the folder listed. One that does not exist or cannot be opened
+  gives way to the nearest folder above it that can, and `message` says why.
+- `parent_path` (str | null): the folder above it; `null` at the top of a drive.
+- `breadcrumbs` (list): `name` and `path` of each folder from the top of the
+  drive down to this one.
+- `folders` (list): `name` and `path` of each folder inside, sorted, leaving
+  out hidden folders, `__MACOSX` and `---Created---`.
+- `image_count` (int): supported images directly inside, counted as
+  `scan-folder` counts them.
+- `places` (list): shortcuts: the home folder, its Desktop, Documents,
+  Downloads and Pictures folders when it has them, and each drive on Windows.
+- `message` (str): empty unless a different folder was listed than the one
+  asked for.
 
 ### `POST /api/jobs/scan-selected-batch-folders`
 Validates selected batch subfolders under a scanned parent folder and reports which selected folders are ready for generation.
@@ -364,13 +402,79 @@ Makes one cover per bundle folder, as `/generate-all-folders` does for sheets.
   `pages_generated`, `total_images`, `output_path`, `output_files` and `message`
 - `message` (str)
 
+### `POST /api/jobs/upscale-images`
+Makes every image of a folder bigger, saving each as a PNG and as a JPG in an
+`Upscaled` folder inside `output_path`: `Upscaled/PNG/<name>.png` and
+`Upscaled/JPG/<name>.jpg`. The PNG keeps any transparency; the JPG is
+flattened onto white. Images are resampled with Lanczos, which keeps edges
+smooth but adds no detail.
+
+**Request body**
+```json
+{
+  "folder_path": "/path/to/images",
+  "output_path": "/path/to/output",
+  "scale": 2,
+  "dpi": 300
+}
+```
+- `scale` (`2` | `3` | `4`, default `2`): how many times bigger each side becomes.
+- `dpi` (int, 1-1200, default `300`): stamped into every file.
+- Each file keeps its image's name, so upscaling again replaces what the last
+  run made.
+- Files sharing a name in different formats, such as `art.png` and `art.jpg`,
+  would be saved over each other, so one gives both formats: PNG first, then
+  WebP, then JPG.
+- Upscaled images are capped at 100 megapixels; an image that would pass that
+  is left out and named in the response.
+
+**Response fields**
+- `success` (bool): whether any image was upscaled
+- `scale` (int)
+- `total_images` (int): images upscaled
+- `output_path` (str): the `Upscaled` folder
+- `png_folder`, `jpg_folder` (str): the two folders inside it
+- `output_files` (list[str]): every file written
+- `images_skipped` (int): files that could not be read as images
+- `too_large_files` (list[str]): images left out for passing the cap
+- `same_name_files` (list[str]): files left out for sharing a name with the
+  image that was used
+- `message` (str)
+
+### `POST /api/jobs/upscale-images-batch`
+Upscales each selected bundle into `<created_output_root_path>/<bundle>/Upscaled`.
+
+**Request body**
+```json
+{
+  "parent_folder_path": "/path/to/parent-folder",
+  "created_output_root_path": "/path/to/created-output-root",
+  "selected_subfolders": ["/path/to/parent-folder/bundle-a", "/path/to/parent-folder/bundle-b"],
+  "scale": 4,
+  "dpi": 300
+}
+```
+
+**Response fields**
+- `success` (bool)
+- `created_output_root_path` (str)
+- `processed_folders`, `selected_folders`, `total_detected_folders`,
+  `generated_folders` (int): as for `/generate-all-folders`
+- `scale` (int)
+- `bundle_results` (list): per bundle, `folder_name`, `success`,
+  `total_images`, `output_path`, `images_skipped`, `too_large_files`,
+  `same_name_files` and `message`
+- `message` (str)
+
 ---
 
 ## Using the app
 1. Run `pasteup`; it opens in your browser.
 2. **Pick your clip art.** Choose **One bundle** (a folder of images) or **Many
-   bundles** (a folder with one folder inside per bundle), enter the folder and
-   click **Scan folder**. Results go in a `---Created---` folder next to it.
+   bundles** (a folder with one folder inside per bundle), then click
+   **Browse…**: open folders until you're in the right one, and **Use this
+   folder** scans it. Or type or paste its path and click **Scan folder**.
+   Results go in a `---Created---` folder next to it.
    - One bundle: **Folder check** says how many images it found and how many
      full sheets of 12 they make. If the folder holds only other folders, pick
      one under **Choose folders**.
@@ -378,8 +482,8 @@ Makes one cover per bundle folder, as `/generate-all-folders` does for sheets.
      Untick any you want to skip. A bundle that fails its check can be unticked,
      or fixed and checked again with **Check selected bundles**.
 3. **Set up the page.** Size, units, DPI and format apply to sheets and covers
-   alike. **Clean up white backgrounds** can make near-white backgrounds pure
-   white or transparent.
+   alike, and DPI to upscaled images too. **Clean up white backgrounds** can
+   make near-white backgrounds pure white or transparent.
 4. **Make your images.**
    - **Preview sheets:** every image, 12 to a page (`POST /api/jobs/generate`,
      or `POST /api/jobs/generate-all-folders` for many bundles), optionally with a
@@ -388,6 +492,10 @@ Makes one cover per bundle folder, as `/generate-all-folders` does for sheets.
      (`POST /api/jobs/generate-cover-collage`, or
      `POST /api/jobs/generate-cover-collage-batch`). **Only use certain images**
      limits it to the files you name.
+   - **Upscaled images:** every image 2x, 3x or 4x bigger, as a PNG and a JPG
+     in an `Upscaled` folder (`POST /api/jobs/upscale-images`, or
+     `POST /api/jobs/upscale-images-batch`). It runs on its own, with no
+     sheets or cover needed.
 5. **Your files** lists what was made and where it was saved; **Copy** puts a
    path on the clipboard.
 
@@ -400,6 +508,9 @@ Makes one cover per bundle folder, as `/generate-all-folders` does for sheets.
 - Trailing images that do not fill a complete page are left out by default; the
   response reports how many. Set `include_partial_page: true` to render that final
   page with its unused cells left white.
+- Upscaling resamples each image: edges stay smooth, but no detail is added,
+  so at 4x clip art looks soft. AI upscalers can invent detail; Pasteup has
+  none built in.
 
 ---
 
@@ -470,7 +581,7 @@ Symptoms:
 Fixes:
 - Confirm files are directly in the selected folder (non-recursive scan).
 - Confirm extensions are supported.
-- Check that files are not hidden/system placeholders.
+- Check the files aren't hidden: names starting with a dot are skipped.
 
 ### Permission errors
 Symptoms:
@@ -481,6 +592,12 @@ Fixes:
 - Verify read permission on input folder and files.
 - Verify write permission on output folder.
 - Try a user-owned directory (for example inside your home directory).
+
+### "Pasteup isn't allowed to open" Desktop, Documents or Downloads on a Mac
+macOS asks before a program reads these folders, and Pasteup reads them as the
+terminal app it runs in (Terminal, for the `pasteup --shortcut` launcher). If
+that was refused, turn the folder on for your terminal app under **System
+Settings › Privacy & Security › Files and Folders**, then restart Pasteup.
 
 ---
 

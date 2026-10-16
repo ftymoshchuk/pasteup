@@ -16,8 +16,8 @@ const GENERATION_MODES = {
     helpText: "Point Pasteup at the folder that holds one bundle's images.",
     modeStepCopy: "Counts your images and checks they can be read.",
     folderStepCopy: "Results go in a ---Created--- folder next to it.",
-    outputStepCopy: "Preview sheets of every image, or one cover for the listing.",
-    outputHintReady: "Ready! Make preview sheets, a cover, or both.",
+    outputStepCopy: "Preview sheets of every image, a cover for the listing, or upscaled copies of the images.",
+    outputHintReady: "Ready! Make preview sheets, a cover or upscaled images.",
   },
   batch: {
     inputLabel: "Folder of bundles",
@@ -29,7 +29,7 @@ const GENERATION_MODES = {
     helpText: "Point Pasteup at a folder with one folder inside per bundle.",
     modeStepCopy: "Lists the bundle folders inside and checks each one.",
     folderStepCopy: "Each bundle gets its own folder inside a ---Created--- folder next to it.",
-    outputStepCopy: "Preview sheets or a cover for every bundle you checked.",
+    outputStepCopy: "Preview sheets, a cover or upscaled images for every bundle you checked.",
     outputHintReady: "Ready! Make images for the checked bundles.",
   },
 };
@@ -61,9 +61,12 @@ const backgroundToleranceEl = document.getElementById("background-tolerance");
 const backgroundFeatherEl = document.getElementById("background-feather");
 const includePartialPageEl = document.getElementById("include-partial-page");
 
+const upscaleScaleEl = document.getElementById("upscale-scale");
+
 const scanButton = document.getElementById("scan-button");
 const generateButton = document.getElementById("generate-button");
 const coverCollageButton = document.getElementById("cover-collage-button");
+const upscaleButton = document.getElementById("upscale-button");
 const outputActionsSectionEl = document.getElementById("output-actions-section");
 const outputActionsHintEl = document.getElementById("output-actions-hint");
 const scanResultEl = document.getElementById("scan-result");
@@ -81,6 +84,16 @@ const batchSelectionSummaryEl = document.getElementById("batch-selection-summary
 const batchSelectionStatusEl = document.getElementById("batch-selection-status");
 const videoSettingsEl = document.getElementById("video-settings");
 const backgroundCleanSettingsEl = document.getElementById("background-clean-settings");
+const browseFolderButton = document.getElementById("browse-folder-button");
+const folderBrowserEl = document.getElementById("folder-browser");
+const folderBrowserTitleEl = document.getElementById("folder-browser-title");
+const folderBrowserPlacesEl = document.getElementById("folder-browser-places");
+const folderBrowserCrumbsEl = document.getElementById("folder-browser-crumbs");
+const folderBrowserNoticeEl = document.getElementById("folder-browser-notice");
+const folderBrowserListEl = document.getElementById("folder-browser-list");
+const folderBrowserStatusEl = document.getElementById("folder-browser-status");
+const folderBrowserCancelButton = document.getElementById("folder-browser-cancel");
+const folderBrowserChooseButton = document.getElementById("folder-browser-choose");
 
 const generationState = {
   mode: document.querySelector('input[name="generation-mode"]:checked')?.value || "single",
@@ -249,14 +262,22 @@ function validateVideoGenerationSettings() {
   return true;
 }
 
-function validateOutputQualitySettings() {
-  const quality = readOutputQualitySettings();
-
-  if (!Number.isFinite(quality.dpi) || quality.dpi <= 0 || quality.dpi > 1200) {
+function validateDpiSetting() {
+  const { dpi } = readOutputQualitySettings();
+  if (!Number.isFinite(dpi) || dpi <= 0 || dpi > 1200) {
     reportSettingsProblem("DPI must be between 1 and 1200.", dpiEl);
     return false;
   }
 
+  return true;
+}
+
+function validateOutputQualitySettings() {
+  if (!validateDpiSetting()) {
+    return false;
+  }
+
+  const quality = readOutputQualitySettings();
   if (quality.background_clean_mode === "off") {
     return true;
   }
@@ -455,6 +476,30 @@ function buildBatchCoverCollagePayload() {
     format: commonSettings.format,
     collage_template: readSelectedCoverCollageTemplate(),
     ...readOutputQualitySettings(),
+  };
+}
+
+function readUpscaleScale() {
+  return Number(upscaleScaleEl?.value) || 2;
+}
+
+// Upscaling uses only the DPI from step 2: the images keep their own shape.
+function readUpscalePayload() {
+  return {
+    folder_path: readWorkingFolderPath(),
+    output_path: outputFolderEl.value.trim(),
+    scale: readUpscaleScale(),
+    dpi: readOutputQualitySettings().dpi,
+  };
+}
+
+function buildBatchUpscalePayload() {
+  return {
+    parent_folder_path: inputFolderEl.value.trim(),
+    created_output_root_path: outputFolderEl.value.trim(),
+    selected_subfolders: getSelectedBatchFolderPaths(),
+    scale: readUpscaleScale(),
+    dpi: readOutputQualitySettings().dpi,
   };
 }
 
@@ -694,6 +739,13 @@ function getCoverCollageButtonLabel() {
   return selectedCount === 1 ? "Make cover for 1 bundle" : `Make covers for ${selectedCount} bundles`;
 }
 
+function getUpscaleButtonLabel() {
+  const { selectedCount } = getBatchGenerationSelectionDetails();
+  return generationState.mode === "batch" && selectedCount > 0
+    ? `Upscale ${pluralize(selectedCount, "bundle")}`
+    : "Upscale images";
+}
+
 function getGenerationStatusMessage() {
   if (generationState.mode !== "batch") {
     return getSelectedGenerationModeConfig().statusMessage;
@@ -752,11 +804,16 @@ function updateOutputActionState() {
     ? generationReady || coverCollageReady
     : generationState.singleFolderReady;
 
+  // Ready on the same terms as a cover: it too takes every image as it is.
+  const upscaleReady = coverCollageReady;
+
   generateButton.textContent = getGenerationButtonLabel();
   coverCollageButton.textContent = getCoverCollageButtonLabel();
+  upscaleButton.textContent = getUpscaleButtonLabel();
   generateButton.disabled = !generationReady || generationState.busy;
   coverCollageButton.disabled = !coverCollageReady || generationState.busy;
-  [scanButton, batchScanButton].forEach((button) => {
+  upscaleButton.disabled = !upscaleReady || generationState.busy;
+  [scanButton, batchScanButton, browseFolderButton].forEach((button) => {
     if (button) {
       button.disabled = generationState.busy;
     }
@@ -765,6 +822,8 @@ function updateOutputActionState() {
   generateButton.classList.toggle("secondary-button", !generationReady);
   coverCollageButton.classList.toggle("primary-button", coverCollageReady);
   coverCollageButton.classList.toggle("secondary-button", !coverCollageReady);
+  upscaleButton.classList.toggle("primary-button", upscaleReady);
+  upscaleButton.classList.toggle("secondary-button", !upscaleReady);
   outputActionsSectionEl.classList.toggle("workflow-step--disabled", !outputActionsEnabled);
   outputActionsHintEl.textContent = getOutputActionsHint();
   updateBatchSelectionStatus();
@@ -1179,12 +1238,12 @@ function describeVideoProblem(message) {
   return start >= 0 ? message.slice(start) : "The preview video couldn't be made.";
 }
 
-function renderBatchFolderOutcomeSection(results, kind) {
+function renderBatchFolderOutcomeSection(results, kind, scale) {
   if (!Array.isArray(results) || results.length === 0) {
     return "";
   }
 
-  const requestedPreviewVideo = kind !== "cover" && Boolean(createPreviewVideoEl?.checked);
+  const requestedPreviewVideo = kind === "sheets" && Boolean(createPreviewVideoEl?.checked);
   const lines = results.map((result) => {
     const folderName = result.folder_name || result.displayName || fileName(result.output_path || "") || "Bundle";
     if (!result.success) {
@@ -1194,6 +1253,17 @@ function renderBatchFolderOutcomeSection(results, kind) {
     if (kind === "cover") {
       const outputFiles = Array.isArray(result.output_files) ? result.output_files : [];
       return `${folderName}: ${outputFiles.length > 0 ? outputFiles.map(fileName).join(", ") : "cover made"}`;
+    }
+
+    if (kind === "upscale") {
+      // An image missing from the upscaled set is worth a mention; one left
+      // out for its name is not, as its twin gave both formats.
+      const tooLargeCount = Array.isArray(result.too_large_files) ? result.too_large_files.length : 0;
+      return [
+        `${folderName}: ${pluralize(result.total_images ?? 0, "image")} upscaled`,
+        tooLargeCount > 0 ? `${tooLargeCount} too big to upscale ${scale}x` : "",
+        result.images_skipped > 0 ? `${pluralize(result.images_skipped, "file")} unreadable` : "",
+      ].filter(Boolean).join(", ");
     }
 
     if ((result.pages_generated ?? 0) === 0) {
@@ -1214,13 +1284,36 @@ function renderBatchFolderOutcomeSection(results, kind) {
 function renderBatchSummary(result, kind) {
   const bundleResults = Array.isArray(result.bundle_results) ? result.bundle_results : [];
   const isCover = kind === "cover";
+  const isUpscale = kind === "upscale";
   // A bundle counts as done when something was made for it.
-  const doneResults = bundleResults.filter((bundleResult) => bundleResult?.success && (isCover || (bundleResult.pages_generated ?? 0) > 0));
+  const doneResults = bundleResults.filter((bundleResult) => (isUpscale
+    ? bundleResult?.success && (bundleResult.total_images ?? 0) > 0
+    : bundleResult?.success && (isCover || (bundleResult.pages_generated ?? 0) > 0)));
   const doneCount = doneResults.length;
   const totalCount = result.processed_folders ?? bundleResults.length;
-  const outputName = isCover ? "covers" : "preview sheets";
-  const requestedPreviewVideo = !isCover && Boolean(createPreviewVideoEl?.checked);
+  const outputName = { cover: "covers", upscale: "upscaled images" }[kind] || "preview sheets";
+  const requestedPreviewVideo = kind === "sheets" && Boolean(createPreviewVideoEl?.checked);
   const sum = (field) => doneResults.reduce((total, bundleResult) => total + (bundleResult[field] ?? 0), 0);
+
+  let summaryRows;
+  if (isCover) {
+    summaryRows = [
+      { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
+      { label: "Cover files", value: pluralize(doneResults.flatMap((bundleResult) => bundleResult.output_files ?? []).length, "file") },
+    ];
+  } else if (isUpscale) {
+    summaryRows = [
+      { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
+      { label: "Images upscaled", value: pluralize(sum("total_images"), "image") },
+    ];
+  } else {
+    summaryRows = [
+      { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
+      { label: "Sheets", value: pluralize(sum("pages_generated"), "sheet") },
+      { label: "Images used", value: pluralize(sum("total_images"), "image") },
+      { label: "Videos", value: requestedPreviewVideo ? pluralize(bundleResults.filter((bundleResult) => bundleResult.video_created).length, "video") : null },
+    ];
+  }
 
   let badgeLabel = "Done";
   let message = `Made ${outputName} for ${pluralize(doneCount, "bundle")}.`;
@@ -1236,27 +1329,71 @@ function renderBatchSummary(result, kind) {
     tone: doneCount > 0 && doneCount === totalCount ? "success" : "warning",
     badgeLabel,
     message,
-    summaryRows: isCover
-      ? [
-        { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
-        { label: "Cover files", value: pluralize(doneResults.flatMap((bundleResult) => bundleResult.output_files ?? []).length, "file") },
-      ]
-      : [
-        { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
-        { label: "Sheets", value: pluralize(sum("pages_generated"), "sheet") },
-        { label: "Images used", value: pluralize(sum("total_images"), "image") },
-        { label: "Videos", value: requestedPreviewVideo ? pluralize(bundleResults.filter((bundleResult) => bundleResult.video_created).length, "video") : null },
-      ],
+    summaryRows,
     sections: [
-      renderBatchFolderOutcomeSection(bundleResults, kind),
+      renderBatchFolderOutcomeSection(bundleResults, kind, result.scale),
       renderPathSection("Saved in", result.created_output_root_path || "", "Copy the folder path"),
     ],
+  });
+}
+
+// Matches MAX_UPSCALED_MEGAPIXELS in services/upscaler.py.
+const MAX_UPSCALED_MEGAPIXELS = 100;
+
+function describeTooLargeToUpscale(names, scale) {
+  if (names.length === 0) {
+    return "";
+  }
+
+  const advice = scale > 2 ? "Try a smaller size." : "They're big enough already.";
+  return names.length === 1
+    ? `${names[0]} would pass ${MAX_UPSCALED_MEGAPIXELS} megapixels at ${scale}x, so it was left out. ${advice}`
+    : `${names.length} images would pass ${MAX_UPSCALED_MEGAPIXELS} megapixels at ${scale}x, so they were left out: ${names.join(", ")}. ${advice}`;
+}
+
+function describeSameNameFiles(names) {
+  if (names.length === 0) {
+    return "";
+  }
+
+  return names.length === 1
+    ? `${names[0]} was left out: an image with the same name in another format gave both the PNG and the JPG.`
+    : `${names.length} files were left out because an image with the same name in another format gave both the PNG and the JPG: ${names.join(", ")}.`;
+}
+
+function renderUpscaleSummary(result) {
+  const imageCount = result.total_images ?? 0;
+  const tooLarge = Array.isArray(result.too_large_files) ? result.too_large_files : [];
+  const sameName = Array.isArray(result.same_name_files) ? result.same_name_files : [];
+
+  renderResultCard(generationResultEl, {
+    tone: imageCount > 0 ? "success" : "warning",
+    badgeLabel: imageCount > 0 ? "Done" : "Nothing made",
+    message: imageCount > 0
+      ? `Upscaled ${pluralize(imageCount, "image")} ${result.scale}x, each as a PNG and a JPG.`
+      : "No images were upscaled.",
+    notes: [
+      result.images_skipped > 0 ? `Skipped ${pluralize(result.images_skipped, "file")} that couldn't be read.` : "",
+      describeTooLargeToUpscale(tooLarge, result.scale),
+      describeSameNameFiles(sameName),
+    ],
+    sections: imageCount > 0
+      ? [
+        renderPathSection("PNG files", result.png_folder, "Copy the PNG folder path"),
+        renderPathSection("JPG files", result.jpg_folder, "Copy the JPG folder path"),
+      ]
+      : [],
   });
 }
 
 function renderGenerationSummary(result, kind = "sheets") {
   if (Array.isArray(result.bundle_results)) {
     renderBatchSummary(result, kind);
+    return;
+  }
+
+  if (kind === "upscale") {
+    renderUpscaleSummary(result);
     return;
   }
 
@@ -1426,15 +1563,17 @@ async function scanCurrentFolder({ preserveSubfolderPicker = false } = {}) {
   return result;
 }
 
+async function scanFolderAndCheckBundles() {
+  await scanCurrentFolder({ preserveSubfolderPicker: true });
+  // Check the picked bundles straight away, so making images for all the
+  // bundles in a folder takes one click.
+  if (generationState.mode === "batch" && hasSelectedBatchFolders()) {
+    await validateSelectedBatchFolders();
+  }
+}
+
 scanButton?.addEventListener("click", async () => {
-  await runExclusive(async () => {
-    await scanCurrentFolder({ preserveSubfolderPicker: true });
-    // Check the picked bundles straight away, so making images for all the
-    // bundles in a folder takes one click.
-    if (generationState.mode === "batch" && hasSelectedBatchFolders()) {
-      await validateSelectedBatchFolders();
-    }
-  });
+  await runExclusive(scanFolderAndCheckBundles);
 });
 
 // The check card describes the picked bundles, so it follows the picks:
@@ -1566,6 +1705,213 @@ useSubfolderButton?.addEventListener("click", async () => {
   await runExclusive(() => scanCurrentFolder());
 });
 
+// The folder browser. A page can't learn the path of a folder picked with the
+// browser's own file chooser, so this one lists folders through Pasteup:
+// clicking a folder opens it, and "Use this folder" takes the one shown.
+const folderBrowserState = {
+  path: "",
+  parentPath: null,
+  breadcrumbs: [],
+  // Where browsing got to last time, to start from when no path is typed.
+  lastPath: "",
+  // Only the latest listing is drawn, so a slow one can't replace a newer one.
+  requestId: 0,
+};
+
+function openFolderBrowser() {
+  if (!folderBrowserEl || folderBrowserEl.open || generationState.busy) {
+    return;
+  }
+
+  folderBrowserTitleEl.textContent = `Choose the ${getSelectedGenerationModeConfig().inputLabel.toLowerCase()}`;
+  folderBrowserState.path = "";
+  folderBrowserState.parentPath = null;
+  folderBrowserState.breadcrumbs = [];
+  folderBrowserPlacesEl.replaceChildren();
+  folderBrowserCrumbsEl.replaceChildren();
+  folderBrowserListEl.replaceChildren();
+  showFolderBrowserNotice("");
+  folderBrowserStatusEl.textContent = "Opening…";
+  folderBrowserChooseButton.disabled = true;
+  folderBrowserEl.showModal();
+  // A typed path is where browsing starts, so it works as a shortcut too.
+  showFolderInBrowser(readMainInputFolderPath() || folderBrowserState.lastPath);
+}
+
+async function showFolderInBrowser(folderPath, { focusPath = "" } = {}) {
+  const requestId = ++folderBrowserState.requestId;
+  folderBrowserListEl.setAttribute("aria-busy", "true");
+  const { ok, data, errorMessage } = await postJson("/api/jobs/browse-folder", { folder_path: folderPath });
+  if (requestId !== folderBrowserState.requestId) {
+    return;
+  }
+
+  folderBrowserListEl.setAttribute("aria-busy", "false");
+  if (!ok) {
+    showFolderBrowserNotice(errorMessage);
+    if (!folderBrowserState.path) {
+      folderBrowserStatusEl.textContent = "";
+    }
+    return;
+  }
+
+  renderFolderBrowser(data, focusPath);
+}
+
+function renderFolderBrowser(listing, focusPath = "") {
+  const folders = Array.isArray(listing.folders) ? listing.folders : [];
+  const breadcrumbs = Array.isArray(listing.breadcrumbs) ? listing.breadcrumbs : [];
+  const places = Array.isArray(listing.places) ? listing.places : [];
+  folderBrowserState.path = listing.path;
+  folderBrowserState.lastPath = listing.path;
+  folderBrowserState.parentPath = listing.parent_path || null;
+  folderBrowserState.breadcrumbs = breadcrumbs;
+
+  folderBrowserPlacesEl.replaceChildren(...places.map((place) => {
+    const button = createFolderButton(place, "folder-browser__place");
+    if (place.path === listing.path) {
+      button.setAttribute("aria-current", "true");
+    }
+    return wrapInListItem(button);
+  }));
+
+  folderBrowserCrumbsEl.replaceChildren(...breadcrumbs.map((crumb, index) => {
+    if (index < breadcrumbs.length - 1) {
+      return wrapInListItem(createFolderButton(crumb, "folder-browser__crumb"));
+    }
+
+    const here = document.createElement("span");
+    here.className = "folder-browser__here";
+    here.setAttribute("aria-current", "location");
+    here.textContent = crumb.name;
+    return wrapInListItem(here);
+  }));
+
+  folderBrowserListEl.setAttribute("aria-label", `Folders inside ${breadcrumbs.at(-1)?.name || listing.path}`);
+  if (folders.length > 0) {
+    folderBrowserListEl.replaceChildren(...folders.map((folder) => wrapInListItem(createFolderButton(folder, "folder-browser__folder"))));
+  } else {
+    const emptyItem = document.createElement("li");
+    emptyItem.className = "folder-browser__empty";
+    emptyItem.textContent = "No folders inside.";
+    folderBrowserListEl.replaceChildren(emptyItem);
+  }
+  folderBrowserListEl.scrollTop = 0;
+
+  showFolderBrowserNotice(listing.message || "");
+  folderBrowserStatusEl.textContent = describeFolderContents(listing.image_count ?? 0, folders.length);
+  folderBrowserChooseButton.disabled = false;
+
+  // Keyboard focus stays in the list: on the folder just come up out of, or
+  // else the first. Only that one is in the tab order; arrow keys move on.
+  const folderButtons = [...folderBrowserListEl.querySelectorAll("button")];
+  const focusTarget = folderButtons.find((button) => button.dataset.path === focusPath) || folderButtons[0];
+  folderButtons.forEach((button) => {
+    button.tabIndex = button === focusTarget ? 0 : -1;
+  });
+  (focusTarget || folderBrowserChooseButton).focus();
+}
+
+function createFolderButton({ name, path }, className) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.dataset.path = path;
+  button.textContent = name;
+  return button;
+}
+
+function wrapInListItem(child) {
+  const item = document.createElement("li");
+  item.append(child);
+  return item;
+}
+
+function showFolderBrowserNotice(message) {
+  folderBrowserNoticeEl.textContent = message;
+  folderBrowserNoticeEl.hidden = !message;
+}
+
+function describeFolderContents(imageCount, folderCount) {
+  const images = imageCount > 0 ? pluralize(imageCount, "image") : "";
+  const folders = folderCount > 0 ? pluralize(folderCount, "folder") : "";
+  if (images && folders) {
+    return `${images} and ${folders} here.`;
+  }
+  if (images) {
+    return `${images} here.`;
+  }
+  return folders ? `${folders} here, no images.` : "No images or folders here.";
+}
+
+// Going up to a folder on the current path lands on the folder just left.
+function childOnCurrentPath(folderPath) {
+  const { breadcrumbs } = folderBrowserState;
+  const index = breadcrumbs.findIndex((crumb) => crumb.path === folderPath);
+  return index >= 0 && index < breadcrumbs.length - 1 ? breadcrumbs[index + 1].path : "";
+}
+
+async function useBrowsedFolder() {
+  const chosenPath = folderBrowserState.path;
+  if (!chosenPath || generationState.busy) {
+    return;
+  }
+
+  folderBrowserEl.close();
+  // As if the path had been typed in, then scanned.
+  inputFolderEl.value = chosenPath;
+  // A long path shows its end, the folder's own name, rather than its start.
+  inputFolderEl.scrollLeft = inputFolderEl.scrollWidth;
+  resetSingleFolderSelectionState();
+  syncDerivedOutputPath();
+  resetScanReadyState();
+  resetCoverCollageIncludeList();
+  await runExclusive(scanFolderAndCheckBundles);
+  // The scan disables Browse, which drops keyboard focus back to the page.
+  if (document.activeElement === document.body) {
+    browseFolderButton?.focus();
+  }
+}
+
+browseFolderButton?.addEventListener("click", openFolderBrowser);
+folderBrowserCancelButton?.addEventListener("click", () => folderBrowserEl.close());
+folderBrowserChooseButton?.addEventListener("click", useBrowsedFolder);
+
+// Places, the path and the folders are all buttons carrying the folder they open.
+folderBrowserEl?.addEventListener("click", (event) => {
+  const button = event.target.closest?.("button[data-path]");
+  if (button) {
+    showFolderInBrowser(button.dataset.path, { focusPath: childOnCurrentPath(button.dataset.path) });
+  }
+});
+
+folderBrowserEl?.addEventListener("keydown", (event) => {
+  // Backspace goes up a level, as in a file manager.
+  if (event.key === "Backspace" && folderBrowserState.parentPath) {
+    event.preventDefault();
+    showFolderInBrowser(folderBrowserState.parentPath, { focusPath: folderBrowserState.path });
+    return;
+  }
+
+  const folderButtons = [...folderBrowserListEl.querySelectorAll("button")];
+  const index = folderButtons.indexOf(document.activeElement);
+  const nextIndex = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: folderButtons.length - 1 }[event.key];
+  if (index < 0 || nextIndex === undefined) {
+    return;
+  }
+
+  event.preventDefault();
+  const next = folderButtons[Math.min(Math.max(nextIndex, 0), folderButtons.length - 1)];
+  folderButtons[index].tabIndex = -1;
+  next.tabIndex = 0;
+  next.focus();
+});
+
+// A listing still on its way when the browser closes is dropped.
+folderBrowserEl?.addEventListener("close", () => {
+  folderBrowserState.requestId += 1;
+});
+
 async function runCoverCollage() {
   const selectedTemplateLabel = readSelectedCoverCollageTemplateLabel();
 
@@ -1607,6 +1953,49 @@ coverCollageButton?.addEventListener("click", async () => {
   }
 
   await runExclusive(runCoverCollage);
+});
+
+async function runUpscale() {
+  const scale = readUpscaleScale();
+
+  if (generationState.mode !== "batch") {
+    renderPendingResult(generationResultEl, "Working", `Upscaling every image ${scale}x…`);
+    revealResult(generationResultEl);
+
+    const { ok, data: result, errorMessage } = await postJson("/api/jobs/upscale-images", readUpscalePayload());
+    if (!ok) {
+      renderFailedResult(generationResultEl, errorMessage);
+      return;
+    }
+
+    renderGenerationSummary(result, "upscale");
+    return;
+  }
+
+  const payload = buildBatchUpscalePayload();
+  if (payload.selected_subfolders.length === 0 || !hasValidatedBatchSelection()) {
+    renderPendingResult(generationResultEl, "Check bundles", "Check the picked bundles before upscaling.");
+    return;
+  }
+
+  renderPendingResult(generationResultEl, "Working", `Upscaling images ${scale}x for ${pluralize(payload.selected_subfolders.length, "bundle")}…`);
+  revealResult(generationResultEl);
+
+  const { ok, data: batchResult, errorMessage } = await postJson("/api/jobs/upscale-images-batch", payload);
+  if (!ok) {
+    renderFailedResult(generationResultEl, errorMessage);
+    return;
+  }
+
+  renderGenerationSummary(batchResult, "upscale");
+}
+
+upscaleButton?.addEventListener("click", async () => {
+  if (upscaleButton.disabled || !validateDpiSetting()) {
+    return;
+  }
+
+  await runExclusive(runUpscale);
 });
 
 generateButton?.addEventListener("click", async () => {

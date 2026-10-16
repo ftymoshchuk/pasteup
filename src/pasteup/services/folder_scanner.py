@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 DEFAULT_SAMPLE_SIZE = 5
@@ -12,6 +13,10 @@ IMAGES_PER_PAGE_ESTIMATE = 12
 # offers real source bundles. Keep this list here alongside the discovery helpers to
 # avoid reintroducing output directories such as `---Created---` into batch selection.
 EXCLUDED_GENERATED_FOLDER_NAMES = frozenset({"---Created---"})
+# Never read for images nor offered as bundles, besides hidden folders: Pasteup's
+# own output, and __MACOSX, which a zip made on a Mac fills with "._" metadata
+# files and which appears when the zip is unpacked anywhere else.
+IGNORED_FOLDER_NAMES = EXCLUDED_GENERATED_FOLDER_NAMES | {"__MACOSX"}
 
 
 def scan_folder(folder_path: str, sample_size: int = DEFAULT_SAMPLE_SIZE) -> dict[str, object]:
@@ -132,7 +137,7 @@ def resolve_folder_path(folder_path: str) -> Path:
 def list_supported_image_paths(folder: Path, *, recursive: bool = False) -> list[Path]:
     iterator: Iterable[Path]
     if recursive:
-        iterator = (item for item in folder.rglob("*") if item.is_file())
+        iterator = _walk_files(folder)
     else:
         iterator = folder.iterdir()
 
@@ -140,14 +145,42 @@ def list_supported_image_paths(folder: Path, *, recursive: bool = False) -> list
         [
             item
             for item in iterator
-            if item.is_file() and item.suffix.lower() in SUPPORTED_EXTENSIONS
+            if is_image_file_name(item.name) and item.is_file()
         ],
         key=lambda path: (path.name.lower(), path.name, str(path)),
     )
 
 
+def is_image_file_name(name: str) -> bool:
+    """Whether a file's name makes it one of the images a scan counts.
+
+    Hidden files are left out, as Finder leaves them out. Most of them are the
+    "._name" files macOS writes beside files it copies to a drive that can't
+    hold their metadata (exFAT, FAT32, some network shares): they carry the
+    image's extension but hold no image.
+    """
+    return not name.startswith(".") and Path(name).suffix.lower() in SUPPORTED_EXTENSIONS
+
+
 def is_generated_output_folder(folder: Path) -> bool:
     return folder.name in EXCLUDED_GENERATED_FOLDER_NAMES
+
+
+def is_ignored_folder(folder: Path) -> bool:
+    """Whether a folder is never read for images nor offered as a bundle.
+
+    Hidden folders are another program's: on drives a Mac has written to,
+    macOS keeps .Spotlight-V100, .Trashes and .fseventsd.
+    """
+    return folder.name.startswith(".") or folder.name in IGNORED_FOLDER_NAMES
+
+
+def _walk_files(folder: Path) -> Iterator[Path]:
+    """Every file under ``folder``, outside ignored folders."""
+    for root, folder_names, file_names in os.walk(folder):
+        # Pruned in place, which keeps os.walk out of them.
+        folder_names[:] = [name for name in folder_names if not is_ignored_folder(Path(name))]
+        yield from (Path(root) / name for name in file_names)
 
 
 def list_child_folder_paths(folder: Path) -> list[dict[str, str]]:
@@ -157,7 +190,7 @@ def list_child_folder_paths(folder: Path) -> list[dict[str, str]]:
             (
                 item.resolve(strict=False)
                 for item in folder.iterdir()
-                if item.is_dir() and not is_generated_output_folder(item)
+                if item.is_dir() and not is_ignored_folder(item)
             ),
             key=lambda path: (path.name.lower(), path.name, str(path)),
         )
