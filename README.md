@@ -55,6 +55,11 @@ pytest
 ```
 CI runs the same on Python 3.11 and 3.13, against a regular install of the
 package and with ffmpeg present, so the preview-video tests encode real files.
+Its `ci-passed` job succeeds only when every other job does, and is the one
+check `main` requires.
+
+`scripts/protect-repo.sh` applies the repository's branch ruleset and security
+settings through the GitHub CLI; it needs `gh` signed in as a repository admin.
 
 Project layout:
 - `src/pasteup/main.py`: the FastAPI app
