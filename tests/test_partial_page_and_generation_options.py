@@ -145,6 +145,31 @@ def test_generate_endpoint_reports_dropped_images(tmp_path: Path) -> None:
     assert response.json()["images_dropped"] == 3
 
 
+def test_generate_endpoint_reports_unreadable_files(tmp_path: Path) -> None:
+    """The UI reads the count, rather than parsing it out of the message."""
+    source = tmp_path / "in"
+    _seed_images(source, CELLS_PER_PAGE)
+    (source / "broken.png").write_text("not an image")
+
+    response = client.post(
+        "/api/jobs/generate",
+        json={
+            "folder_path": str(source),
+            "output_path": str(tmp_path / "out"),
+            "page_width": 1200,
+            "page_height": 900,
+            "gap": 10,
+            "margin": 20,
+            "format": "PNG",
+        },
+    )
+
+    body = response.json()
+    assert body["pages_generated"] == 1
+    assert body["images_skipped"] == 1
+    assert "Skipped 1 unreadable file(s)." in body["message"]
+
+
 def test_generate_endpoint_include_partial_page_reaches_the_composer(tmp_path: Path) -> None:
     """The batcher truncates to whole pages, so the flag has to bypass it."""
     source = tmp_path / "in"

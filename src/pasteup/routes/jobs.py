@@ -589,6 +589,7 @@ def _generate_for_single_folder(
         video_file=video_file,
         video_created=video_created,
         images_dropped=compose_summary.total_images_dropped,
+        images_skipped=compose_summary.total_images_skipped,
         backgrounds_cleaned=compose_summary.background_cleaned,
         page_geometry=geometry.description,
         message=response_message,

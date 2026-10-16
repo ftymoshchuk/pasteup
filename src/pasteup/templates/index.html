@@ -1,274 +1,327 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pasteup</title>
+    <script>
+      // Apply the saved or system theme before the page paints, so a dark-mode
+      // user does not see a flash of paper.
+      try {
+        document.documentElement.dataset.theme = localStorage.getItem("pasteup-theme")
+          || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      } catch (error) {}
+    </script>
+    <link rel="preload" href="/static/fonts/caveat-latin-700.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/static/fonts/patrick-hand-latin-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/static/css/styles.css" />
   </head>
   <body>
-    <main class="app-shell page-layout">
-      <section class="shell-window" aria-label="Pasteup terminal window">
-        <div class="shell-chrome">
-          <div class="shell-chrome__controls" aria-hidden="true">
-            <span class="shell-chrome__dot shell-chrome__dot--warn"></span>
-            <span class="shell-chrome__dot shell-chrome__dot--ok"></span>
-            <span class="shell-chrome__dot shell-chrome__dot--live"></span>
+    <svg class="svg-defs" aria-hidden="true" focusable="false">
+      <filter id="sketchy" x="-4%" y="-4%" width="108%" height="108%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="3" seed="7" result="noise" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="5" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </svg>
+
+    <a class="skip-link" href="#main">Skip to the steps</a>
+
+    <header class="masthead">
+      <div class="brand">
+        <svg class="doodle" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="13" cy="34.5" r="6.5" />
+          <circle cx="13.5" cy="13.5" r="6.5" />
+          <path d="M18.6 30.6c7.6-5.3 15.4-11 23.6-17.4" />
+          <path d="M19 17.6c7.3 5.6 15.2 11.2 23.4 17.7" />
+          <path d="M25.6 24.2l.2.1" />
+        </svg>
+        <div>
+          <h1>Pasteup</h1>
+          <p class="brand__tagline">Turn a folder of clip art into listing images.</p>
+        </div>
+      </div>
+      <button id="theme-toggle" class="secondary-button button-small theme-toggle" type="button">
+        <svg class="doodle icon-moon" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M30.5 7.5c-9.8 2-15.6 11.4-13.5 20.6 2.1 9 11.3 14.6 20.4 12.6-3.6 3.6-8.7 5.5-14 4.8C13 44 5.6 35 6.6 24.7 7.5 15.2 15.7 7.6 25.4 7.2c1.8-.1 3.5 0 5.1.3z" />
+        </svg>
+        <svg class="doodle icon-sun" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="8.5" />
+          <path d="M24 5.5v6M24 36.5v6M5.5 24h6M36.5 24h6M10.8 10.8l4.2 4.2M33 33l4.2 4.2M10.8 37.2l4.2-4.2M33 15l4.2-4.2" />
+        </svg>
+        <span class="theme-toggle__label">Chalkboard</span>
+      </button>
+    </header>
+
+    <main id="main" class="layout">
+      <section class="card step step--pick" aria-labelledby="step-1-title">
+        <h2 id="step-1-title" class="step__title"><span class="step__number" aria-hidden="true">1</span>Pick your clip art</h2>
+        <p id="mode-help" class="step__intro">Point Pasteup at the folder that holds one bundle's images.</p>
+
+        <fieldset class="mode-toggle">
+          <legend class="field-label">What are you making images for?</legend>
+          <div class="mode-toggle__options">
+            <label class="mode-option">
+              <input id="mode-single" type="radio" name="generation-mode" value="single" checked />
+              <span class="mode-option__body">
+                <span class="mode-option__title">One bundle</span>
+                <span class="mode-option__text">A folder of images</span>
+              </span>
+            </label>
+            <label class="mode-option">
+              <input id="mode-batch" type="radio" name="generation-mode" value="batch" />
+              <span class="mode-option__body">
+                <span class="mode-option__title">Many bundles</span>
+                <span class="mode-option__text">A folder of bundle folders</span>
+              </span>
+            </label>
           </div>
-          <p class="shell-chrome__title">pasteup :: operator console</p>
-          <button id="theme-toggle" class="theme-toggle secondary-button terminal-button" type="button" aria-pressed="true" aria-label="Current theme: terminal dark. Activate to switch to soft light." title="Theme: terminal dark">
-            Switch to soft light
-          </button>
+        </fieldset>
+
+        <div class="field">
+          <label id="input-folder-label" class="field-label" for="input-folder">Bundle folder</label>
+          <input id="input-folder" type="text" value="{{ defaults.input_folder }}" placeholder="e.g. ~/Pictures/clip-art/bundle-01" autocomplete="off" spellcheck="false" aria-describedby="folder-step-copy" />
+        </div>
+        <div class="field">
+          <label id="output-folder-label" class="field-label" for="output-folder">Saves to</label>
+          <input id="output-folder" type="text" value="{{ defaults.output_folder }}" readonly aria-readonly="true" aria-describedby="folder-step-copy" />
+          <p id="folder-step-copy" class="field-help">Results go in a ---Created--- folder next to it.</p>
         </div>
 
-        <header class="page-header shell-section shell-section--hero">
-          <div class="page-header__content">
-            <p class="app-kicker">Terminal session</p>
-            <h1>Pasteup</h1>
-            <p id="mode-help" class="muted-text">Single folder is best when you already know exactly which image folder you want to process.</p>
-          </div>
-        </header>
+        <div class="actions">
+          <button id="scan-button" class="primary-button" type="button">Scan folder</button>
+          <p id="mode-step-copy" class="actions__hint">Counts your images and checks they can be read.</p>
+        </div>
 
-        <section class="shell-section section-card workflow-card">
-          <div class="section-heading">
-            <div>
-              <p class="section-eyebrow">Workflow</p>
-              <h2>Run through this workflow</h2>
+        <section id="subfolder-picker-section" class="subpanel hidden" hidden aria-labelledby="subfolder-title">
+          <h3 id="subfolder-title" class="subhead">Choose folders</h3>
+
+          <div id="subfolder-single-controls">
+            <p class="field-help">This folder has no images of its own, but it has folders inside. Pick one.</p>
+            <div class="subfolder-picker-row">
+              <div class="field">
+                <label class="field-label" for="subfolder-picker">Folder inside</label>
+                <select id="subfolder-picker"></select>
+              </div>
+              <button id="use-subfolder-button" class="secondary-button button-small" type="button">Use this folder</button>
             </div>
-            <p class="muted-text">Pick a mode, enter your folders, run a scan, then choose page generation or cover-collage output based on the scan results and selected folders.</p>
           </div>
 
-          <div class="workflow-steps">
-            <section class="workflow-step">
-              <div class="workflow-step__heading">
-                <p class="section-eyebrow">Step 1</p>
-                <h3>Select a run mode</h3>
-              </div>
-              <p id="mode-step-copy" class="muted-text">Choose Single folder for one image set, or Batch folders to process each image folder inside a parent directory.</p>
-              <fieldset class="mode-toggle" aria-label="Generation mode">
-                <legend class="sr-only">Generation mode</legend>
-                <label class="mode-option">
-                  <input id="mode-single" type="radio" name="generation-mode" value="single" checked />
-                  <span class="mode-option__flag">--single</span><span class="mode-option__text">Single folder</span>
-                </label>
-                <label class="mode-option">
-                  <input id="mode-batch" type="radio" name="generation-mode" value="batch" />
-                  <span class="mode-option__flag">--batch</span><span class="mode-option__text">Batch folders</span>
-                </label>
-              </fieldset>
-            </section>
-
-            <section class="workflow-step">
-              <div class="workflow-step__heading">
-                <p class="section-eyebrow">Step 2</p>
-                <h3>Set folders</h3>
-              </div>
-              <p id="folder-step-copy" class="muted-text">Enter the folder to inspect and the folder where completed output should be saved.</p>
-              <div class="form-grid">
-                <label>
-                  <span id="input-folder-label">Input folder</span>
-                  <input id="input-folder" type="text" value="{{ defaults.input_folder }}" placeholder="e.g. ~/Pictures/clip-art/bundle-01" />
-                </label>
-
-                <label>
-                  <span id="output-folder-label">Output folder</span>
-                  <input id="output-folder" type="text" value="{{ defaults.output_folder }}" readonly aria-readonly="true" />
-                </label>
-              </div>
-            </section>
-
-            <section class="workflow-step workflow-step--primary">
-              <div class="workflow-step__heading">
-                <p class="section-eyebrow">Step 3</p>
-                <h3>Run folder scan</h3>
-              </div>
-              <p class="muted-text">Run a scan first to confirm the folder is ready and to detect any subfolders before creating output.</p>
-              <div class="button-row button-row--split">
-                <button id="scan-button" class="primary-button terminal-button" type="button">Run folder scan</button>
-                <p class="button-row__hint muted-text">Start here: run the scan before using any output actions.</p>
-              </div>
-            </section>
-
-            <section id="subfolder-picker-section" class="workflow-step workflow-step--secondary hidden" hidden>
-              <div class="workflow-step__heading">
-                <p class="section-eyebrow">Step 4</p>
-                <h3>Review detected child folders</h3>
-              </div>
-              <p class="muted-text">Single mode keeps one quick picker for cover-collage work. Batch mode reveals eligible child folders from the scanned parent so you can choose a selected subset, then run batch page generation or batch cover-collage generation for those validated folders.</p>
-
-              <div id="subfolder-single-controls" class="subfolder-control-panel">
-                <div class="subfolder-picker-row">
-                  <label>
-                    <span>Detected child folders in the scanned parent</span>
-                    <select id="subfolder-picker"></select>
-                  </label>
-                  <button id="use-subfolder-button" class="secondary-button terminal-button" type="button">Use selected folder</button>
-                </div>
-              </div>
-
-              <div id="subfolder-batch-controls" class="subfolder-control-panel hidden" hidden>
-                <div class="subfolder-picker-row subfolder-picker-row--stacked">
-                  <fieldset>
-                    <legend>Detected child folders for batch mode</legend>
-                    <p class="muted-text">Select one or more detected child folders. The selected-folder count updates immediately as you change the checklist.</p>
-                    <div id="batch-subfolder-checklist" class="subfolder-checklist" role="group" aria-live="polite"></div>
-                  </fieldset>
-                  <div class="button-row batch-subfolder-actions">
-                    <button id="select-all-subfolders-button" class="secondary-button terminal-button" type="button">Select all</button>
-                    <button id="clear-subfolder-selection-button" class="secondary-button terminal-button" type="button">Clear selection</button>
-                  </div>
-                </div>
-                <p id="batch-selection-summary" class="muted-text subfolder-selection-summary">Run the parent-folder scan to discover child folders for this batch.</p>
-                <p id="batch-selection-status" class="muted-text subfolder-selection-status" role="status" aria-live="polite">Run the parent-folder scan, choose folders, then use Scan selected folders to validate the batch before page or cover-collage generation.</p>
-                <div class="button-row button-row--split">
-                  <button id="batch-scan-button" class="primary-button terminal-button" type="button">Scan selected folders</button>
-                  <p class="button-row__hint muted-text">Batch mode only: validate the selected detected folders independently from the parent-folder discovery scan.</p>
-                </div>
-              </div>
-            </section>
-
-            <section id="output-actions-section" class="workflow-step workflow-step--secondary workflow-step--disabled" aria-labelledby="output-actions-heading">
-              <div class="workflow-step__heading">
-                <p class="section-eyebrow">Step 5</p>
-                <h3 id="output-actions-heading">Run output actions</h3>
-              </div>
-              <p id="output-step-copy" class="muted-text">After a successful scan, run page generation or cover-collage generation for the current folder. In batch mode, scan the parent folder, validate the selected folders, then run batch page generation or batch cover-collage generation for those folders.</p>
-              <div class="section-stack">
-                <div class="form-grid settings-grid">
-                  <label>
-                    <span>Width</span>
-                    <input id="page-width" type="number" value="{{ defaults.page_width }}" min="1" />
-                  </label>
-                  <label>
-                    <span>Height</span>
-                    <input id="page-height" type="number" value="{{ defaults.page_height }}" min="1" />
-                  </label>
-                  <label>
-                    <span>Gap</span>
-                    <input id="gap" type="number" value="{{ defaults.gap }}" min="0" />
-                  </label>
-                  <label>
-                    <span>Margin</span>
-                    <input id="margin" type="number" value="{{ defaults.margin }}" min="0" />
-                  </label>
-                  <label>
-                    <span>Format</span>
-                    <select id="format">
-                      <option value="JPG" {% if defaults.format == "JPG" %}selected{% endif %}>JPG</option>
-                      <option value="PNG" {% if defaults.format == "PNG" %}selected{% endif %}>PNG</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Units</span>
-                    <select id="page-unit">
-                      <option value="px" {% if defaults.page_unit == "px" %}selected{% endif %}>px</option>
-                      <option value="in" {% if defaults.page_unit == "in" %}selected{% endif %}>inches</option>
-                      <option value="mm" {% if defaults.page_unit == "mm" %}selected{% endif %}>mm</option>
-                    </select>
-                    <small class="field-help muted-text">Width and height are read in this unit and converted to pixels at the DPI below.</small>
-                  </label>
-                  <label>
-                    <span>DPI</span>
-                    <input id="dpi" type="number" value="{{ defaults.dpi }}" min="1" max="1200" step="1" />
-                    <small class="field-help muted-text">Stamped into the exported file. 300 is the usual print resolution; without it a page is read as 72 DPI.</small>
-                  </label>
-                  <label>
-                    <span>Clean white background</span>
-                    <select id="background-clean-mode">
-                      <option value="off" selected>off</option>
-                      <option value="flatten">flatten to white</option>
-                      <option value="transparent">make transparent</option>
-                    </select>
-                    <small class="field-help muted-text">Cleans only near-white areas connected to the image border, so light detail inside the subject is left alone.</small>
-                  </label>
-                  <label>
-                    <span>Background tolerance</span>
-                    <input id="background-tolerance" type="number" value="240" min="0" max="255" step="1" />
-                    <small class="field-help muted-text">Lowest channel value treated as background. Lower catches more; too low eats the subject.</small>
-                  </label>
-                  <label>
-                    <span>Edge feather</span>
-                    <input id="background-feather" type="number" value="1" min="0" max="25" step="1" />
-                    <small class="field-help muted-text">Softens the mask edge to remove grey halos around cut-out subjects.</small>
-                  </label>
-                  <label>
-                    <span>Include partial page</span>
-                    <input id="include-partial-page" type="checkbox" />
-                    <small class="field-help muted-text">Render a final page even when it is not completely filled. Off leaves trailing images out and reports how many.</small>
-                  </label>
-                  <label>
-                    <span>Create preview video</span>
-                    <input id="create-preview-video" type="checkbox" />
-                    <small id="create-preview-video-help" class="field-help muted-text">Enable this, then click <strong>Generate pages</strong>. Video creation runs as part of page generation.</small>
-                  </label>
-                  <label>
-                    <span>Duration (seconds)</span>
-                    <input id="video-duration-seconds" type="number" value="15" min="1" max="120" step="1" />
-                  </label>
-                  <label>
-                    <span>Transition</span>
-                    <select id="video-transition">
-                      <option value="none">none</option>
-                      <option value="crossfade">crossfade</option>
-                      <option value="flip">flip</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="button-row action-row">
-                  <button id="generate-button" class="secondary-button terminal-button" type="button" disabled>Generate pages for selected batch folders</button>
-                  <label>
-                    <span>Cover collage template</span>
-                    <select id="cover-collage-template">
-                      {% for template in cover_collage_templates %}
-                      <option value="{{ template.value }}">{{ template.label }}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                  <label>
-                    <span>Cover collage include list</span>
-                    <textarea id="cover-collage-include-list" rows="3" placeholder="Optional. Enter exact image filenames, one per line or comma-separated, for example: cover001.jpg&#10;cover002.png"></textarea>
-                  </label>
-                  <button id="cover-collage-button" class="secondary-button terminal-button" type="button" disabled>Build cover collages for selected batch folders</button>
-                </div>
-                <p id="output-actions-hint" class="muted-text">Output actions stay disabled until the scan confirms the selected folder is ready. In batch mode, scan the parent folder, choose the folders to include, validate them, then run batch page generation or batch cover-collage generation.</p>
-              </div>
-            </section>
-          </div>
-        </section>
-
-        <section class="shell-section section-card shell-section--status">
-          <div class="section-heading">
-            <div>
-              <p class="section-eyebrow">Status</p>
-              <h2>Review latest command output</h2>
+          <div id="subfolder-batch-controls" class="hidden" hidden>
+            <fieldset class="checklist-fieldset">
+              <legend class="field-label">Bundles to include</legend>
+              <div id="batch-subfolder-checklist" class="subfolder-checklist" role="group" aria-live="polite"></div>
+            </fieldset>
+            <div class="actions">
+              <button id="select-all-subfolders-button" class="secondary-button button-small" type="button">Select all</button>
+              <button id="clear-subfolder-selection-button" class="secondary-button button-small" type="button">Clear</button>
             </div>
-            <p class="muted-text">See what the scan found and where generated files were written.</p>
-          </div>
-
-          <div class="results-grid">
-            <section class="result-panel" aria-labelledby="scan-result-heading">
-              <h3 id="scan-result-heading">Scan report</h3>
-              <div id="scan-result" class="result-card" role="status" aria-live="polite">
-                <div class="result-card__header">
-                  <span class="result-badge result-badge--neutral">Ready</span>
-                  <p class="result-message">Waiting for input. Select a mode, set folders, then run a scan.</p>
-                </div>
-              </div>
-            </section>
-
-            <section class="result-panel" aria-labelledby="generation-result-heading">
-              <h3 id="generation-result-heading">Output log</h3>
-              <div id="generation-result" class="result-card" role="status" aria-live="polite">
-                <div class="result-card__header">
-                  <span class="result-badge result-badge--neutral">Waiting</span>
-                  <p class="result-message">No output yet. Run a scan first, then completed files will appear here.</p>
-                </div>
-              </div>
-            </section>
+            <p id="batch-selection-summary" class="status-line muted-text">Scan the folder of bundles to list them.</p>
+            <p id="batch-selection-status" class="status-line" role="status" aria-live="polite">Pick bundles, then check them before making images.</p>
+            <div class="actions">
+              <button id="batch-scan-button" class="primary-button" type="button">Check selected bundles</button>
+            </div>
           </div>
         </section>
       </section>
+
+      <section class="card result-panel result-panel--scan" aria-labelledby="scan-result-heading">
+        <h2 id="scan-result-heading" class="step__title">
+          <svg class="doodle" viewBox="0 0 48 48" aria-hidden="true">
+            <circle cx="20" cy="20" r="11.5" />
+            <path d="M28.5 28.8c3.6 3.4 7 6.9 10.4 10.6" />
+          </svg>
+          Folder check
+        </h2>
+        <div id="scan-result" class="result-card" role="status" aria-live="polite">
+          <div class="result-card__header">
+            <span class="result-badge result-badge--neutral">Waiting</span>
+            <p class="result-message">Scan a folder to see what's in it.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card step step--page" aria-labelledby="step-2-title">
+        <h2 id="step-2-title" class="step__title"><span class="step__number" aria-hidden="true">2</span>Set up the page</h2>
+        <p class="step__intro">Used for both the preview sheets and the cover.</p>
+
+        <div class="field-grid field-grid--page">
+          <div class="field">
+            <label class="field-label" for="page-width">Width</label>
+            <input id="page-width" type="number" value="{{ defaults.page_width }}" min="1" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="page-height">Height</label>
+            <input id="page-height" type="number" value="{{ defaults.page_height }}" min="1" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="page-unit">Units</label>
+            <select id="page-unit">
+              <option value="px" {% if defaults.page_unit == "px" %}selected{% endif %}>pixels</option>
+              <option value="in" {% if defaults.page_unit == "in" %}selected{% endif %}>inches</option>
+              <option value="mm" {% if defaults.page_unit == "mm" %}selected{% endif %}>mm</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="dpi">DPI</label>
+            <input id="dpi" type="number" value="{{ defaults.dpi }}" min="1" max="1200" step="1" aria-describedby="dpi-help" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="format">Format</label>
+            <select id="format">
+              <option value="JPG" {% if defaults.format == "JPG" %}selected{% endif %}>JPG</option>
+              <option value="PNG" {% if defaults.format == "PNG" %}selected{% endif %}>PNG</option>
+            </select>
+          </div>
+        </div>
+        <p id="dpi-help" class="field-help">DPI is saved in the file, so print software knows its real size. 300 is the usual print resolution.</p>
+
+        <details class="disclosure">
+          <summary>Clean up white backgrounds</summary>
+          <div class="disclosure__body">
+            <div class="field">
+              <label class="field-label" for="background-clean-mode">Near-white backgrounds</label>
+              <select id="background-clean-mode" aria-describedby="background-clean-help">
+                <option value="off" selected>Leave as they are</option>
+                <option value="flatten">Make pure white</option>
+                <option value="transparent">Make transparent</option>
+              </select>
+              <p id="background-clean-help" class="field-help">Only the background touching the image's edges changes, so white details inside your art are safe.</p>
+            </div>
+            <div id="background-clean-settings" class="field-grid" hidden>
+              <div class="field">
+                <label class="field-label" for="background-tolerance">Tolerance</label>
+                <input id="background-tolerance" type="number" value="240" min="0" max="255" step="1" aria-describedby="background-tolerance-help" />
+                <p id="background-tolerance-help" class="field-help">Lower catches greyer backgrounds; too low eats into the art.</p>
+              </div>
+              <div class="field">
+                <label class="field-label" for="background-feather">Edge softening</label>
+                <input id="background-feather" type="number" value="1" min="0" max="25" step="1" aria-describedby="background-feather-help" />
+                <p id="background-feather-help" class="field-help">Pixels of softening, to hide grey halos.</p>
+              </div>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section id="output-actions-section" class="card step step--make workflow-step--disabled" aria-labelledby="step-3-title">
+        <h2 id="step-3-title" class="step__title"><span class="step__number" aria-hidden="true">3</span>Make your images</h2>
+        <p id="output-step-copy" class="step__intro">Preview sheets of every image, or one cover for the listing.</p>
+        <p id="output-actions-hint" class="sticky-note" role="status">Scan a folder first. These unlock once it has images.</p>
+
+        <div class="output-grid">
+          <article class="output-tile" aria-labelledby="sheets-title">
+            <div class="output-tile__head">
+              <svg class="doodle" viewBox="0 0 48 48" aria-hidden="true">
+                <path class="doodle__fill" d="M9 7.5c10.2-1 20.3-.6 30.5.5 1 11 .6 22-.5 33-10.4.8-20.6.6-30.5-.5-.9-11-.6-22 .5-33z" />
+                <path d="M8.8 19c10.3-.6 20.6-.2 30.9.4M8.6 30c10.4-.5 20.6.2 30.8.6M18.5 7.4c-.5 11-.1 22.4.3 33.6M29 7.6c-.4 11 .2 22.2.4 33.6" />
+              </svg>
+              <div>
+                <h3 id="sheets-title" class="subhead">Preview sheets</h3>
+                <p>Every image, twelve to a page.</p>
+              </div>
+            </div>
+
+            <details class="disclosure">
+              <summary>Spacing</summary>
+              <div class="disclosure__body field-grid">
+                <div class="field">
+                  <label class="field-label" for="gap">Gap</label>
+                  <input id="gap" type="number" value="{{ defaults.gap }}" min="0" />
+                </div>
+                <div class="field">
+                  <label class="field-label" for="margin">Margin</label>
+                  <input id="margin" type="number" value="{{ defaults.margin }}" min="0" />
+                </div>
+              </div>
+            </details>
+
+            <label class="check">
+              <input id="include-partial-page" type="checkbox" />
+              <span>Include a part-filled last page</span>
+            </label>
+            <label class="check">
+              <input id="create-preview-video" type="checkbox" aria-describedby="create-preview-video-help" />
+              <span>Also make a preview video</span>
+            </label>
+            <p id="create-preview-video-help" class="field-help">An MP4 slideshow of the sheets, made at the same time.</p>
+            <div id="video-settings" class="field-grid" hidden>
+              <div class="field">
+                <label class="field-label" for="video-duration-seconds">Length (seconds)</label>
+                <input id="video-duration-seconds" type="number" value="15" min="1" max="120" step="1" />
+              </div>
+              <div class="field">
+                <label class="field-label" for="video-transition">Transition</label>
+                <select id="video-transition">
+                  <option value="none">None</option>
+                  <option value="crossfade">Crossfade</option>
+                  <option value="flip">Flip</option>
+                </select>
+              </div>
+            </div>
+
+            <button id="generate-button" class="secondary-button" type="button" disabled>Make preview sheets</button>
+          </article>
+
+          <article class="output-tile" aria-labelledby="cover-title">
+            <div class="output-tile__head">
+              <svg class="doodle" viewBox="0 0 48 48" aria-hidden="true">
+                <path d="M6 14.5l21-5.2 5 23.8-21 5.2z" />
+                <path class="doodle__fill" d="M18.8 17.2l22.4-1.5 1.4 24-22.2 1.4z" />
+                <path d="M23.6 35.6l5.4-6.4 4.2 4.1 3.1-3.2 4.3 5" />
+                <circle class="doodle__accent" cx="35.4" cy="22.6" r="2.4" />
+              </svg>
+              <div>
+                <h3 id="cover-title" class="subhead">Cover collage</h3>
+                <p>One eye-catching cover for the listing.</p>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field-label" for="cover-collage-template">Layout</label>
+              <select id="cover-collage-template">
+                {% for template in cover_collage_templates %}
+                <option value="{{ template.value }}">{{ template.label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <details class="disclosure">
+              <summary>Only use certain images</summary>
+              <div class="disclosure__body field">
+                <label class="field-label" for="cover-collage-include-list">Cover collage include list</label>
+                <textarea id="cover-collage-include-list" rows="3" aria-describedby="cover-include-help" placeholder="cover001.jpg&#10;cover002.png"></textarea>
+                <p id="cover-include-help" class="field-help">Exact file names, one per line or comma-separated. Leave empty to use any.</p>
+              </div>
+            </details>
+
+            <button id="cover-collage-button" class="secondary-button" type="button" disabled>Make cover</button>
+          </article>
+        </div>
+      </section>
+
+      <section class="card result-panel result-panel--files" aria-labelledby="generation-result-heading">
+        <h2 id="generation-result-heading" class="step__title">
+          <svg class="doodle" viewBox="0 0 48 48" aria-hidden="true">
+            <path d="M10 13.5l24-3.2 3.3 23.8-24 3.3z" />
+            <path class="doodle__fill" d="M14.3 17.4l24.4-.6.6 24-24.4.6z" />
+            <path d="M19 34.6l5.6-6 4.2 4 3-3 4.5 5" />
+          </svg>
+          Your files
+        </h2>
+        <div id="generation-result" class="result-card" role="status" aria-live="polite">
+          <div class="result-card__header">
+            <span class="result-badge result-badge--neutral">Waiting</span>
+            <p class="result-message">Nothing made yet. Your files will be listed here.</p>
+          </div>
+        </div>
+      </section>
     </main>
+
+    <footer class="site-footer">
+      <p>Pasteup runs on your computer; your images never leave it. <a href="/docs">API docs</a></p>
+    </footer>
+
     <script src="/static/js/app.js"></script>
   </body>
 </html>

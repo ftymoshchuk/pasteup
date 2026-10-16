@@ -19,12 +19,11 @@ def test_index_exposes_batch_validation_controls_and_copy() -> None:
     assert 'id="batch-subfolder-checklist"' in html
     assert 'button id="select-all-subfolders-button"' in normalized
     assert 'button id="clear-subfolder-selection-button"' in normalized
-    assert 'button id="batch-scan-button" class="primary-button terminal-button" type="button">Scan selected folders</button>' in normalized
+    assert 'button id="batch-scan-button" class="primary-button" type="button">Check selected bundles</button>' in normalized
     assert 'id="cover-collage-include-list"' in html
     assert "Cover collage include list" in html
     assert "one per line or comma-separated" in html
-    assert 'Run the parent-folder scan, choose folders, then use Scan selected folders to validate the batch before page or cover-collage generation.' in normalized
-    assert 'Batch mode only: validate the selected detected folders independently from the parent-folder discovery scan.' in normalized
+    assert 'id="batch-selection-status" class="status-line" role="status" aria-live="polite">Pick bundles, then check them before making images.</p>' in normalized
 
 
 def test_app_js_requires_batch_validation_before_generation() -> None:
@@ -39,33 +38,67 @@ def test_app_js_requires_batch_validation_before_generation() -> None:
     assert 'async function validateSelectedBatchFolders() {' in script
     assert 'await Promise.all(selectedBatchFolders.map(async (folderPath) => {' in script
     assert 'postJson("/api/jobs/scan-folder", { folder_path: folderPath })' in script
-    assert 'badgeLabel: invalidResults.length === 0 ? "Validated" : "Needs attention"' in script
+    assert 'function renderBatchCheckSummary() {' in script
     assert 'batchScanButton?.addEventListener("click", async () => {' in script
-    assert 'Run Scan selected folders successfully for the current batch selection before running batch page or cover-collage generation.' in script
+    assert 'renderPendingResult(generationResultEl, "Check bundles", "Check the picked bundles before making images.");' in script
+    assert 'renderPendingResult(generationResultEl, "Check bundles", "Check the picked bundles before making covers.");' in script
     assert 'return hasValidatedBatchSelection();' in script
 
 
-def test_app_js_resets_batch_validation_when_selection_changes() -> None:
+def test_app_js_rechecks_batch_readiness_when_selection_changes() -> None:
+    """Ready only while every picked bundle passed its last check."""
     script = APP_JS.read_text()
 
     assert 'setBatchValidationResults([]);' in script
-    assert 'setSelectedBatchFolders(nextSelection);' in script
+    assert 'function refreshBatchValidationReadiness() {' in script
+    assert '&& selectedPaths.every((folderPath) => validatedPathSet.has(folderPath));' in script
+    assert 'setSelectedBatchFolders(nextSelection);\n      applyBatchSelectionChange();' in script
     assert 'selectAllSubfoldersButton?.addEventListener("click", () => {' in script
     assert 'clearSubfolderSelectionButton?.addEventListener("click", () => {' in script
+    assert script.count("applyBatchSelectionChange();") == 3
+
+
+def test_app_js_checks_every_listed_bundle_after_a_batch_scan() -> None:
+    script = APP_JS.read_text()
+
+    assert 'generationState.selectedBatchFolders = generationState.mode === "batch" && selectedBatchFolders.length === 0' in script
+    assert 'if (generationState.mode === "batch" && hasSelectedBatchFolders()) {\n      await validateSelectedBatchFolders();' in script
+
+
+def test_app_js_scans_the_folder_picked_inside_a_single_bundle_folder() -> None:
+    """Picking a folder used to leave the buttons locked: nothing scanned it."""
+    script = APP_JS.read_text()
+
+    assert 'inputFolderEl.value = subfolderPickerEl.value;' in script
+    assert 'await runExclusive(() => scanCurrentFolder());' in script
 
 
 def test_app_js_renders_batch_cover_collage_results_per_folder() -> None:
     script = APP_JS.read_text()
 
-    assert 'function renderBatchFolderOutcomeSection(results) {' in script
-    assert 'function renderBatchCoverCollageSummary(result) {' in script
+    assert 'function renderBatchFolderOutcomeSection(results, kind) {' in script
+    assert 'function renderBatchSummary(result, kind) {' in script
     assert 'if (Array.isArray(result.bundle_results)) {' in script
-    assert '{ label: "Selected folders processed", value: pluralize(result.processed_folders ?? bundleResults.length, "folder") }' in script
-    assert '{ label: "Folders successfully generated", value: pluralize(result.generated_folders ?? successfulResults.length, "folder") }' in script
-    assert '{ label: "Total collage files written", value: pluralize(totalCollageFilesWritten, "file") }' in script
-    assert '<h4>Per-folder outcomes</h4>' in script
-    assert 'const status = result.success ? "Success" : "Failed";' in script
-    assert 'renderGenerationSummary(batchResult);' in script
+    assert '{ label: "Bundles done", value: `${doneCount} of ${totalCount}` },' in script
+    assert 'renderListSection("Each bundle", lines, "", { limit: Infinity });' in script
+    assert 'renderGenerationSummary(batchResult, "cover");' in script
+    assert 'renderGenerationSummary(result, "sheets");' in script
+
+
+def test_app_js_counts_batch_sheets_from_pages_not_files() -> None:
+    """Batch sheet results carry no file list, so "files written" used to read 0."""
+    script = APP_JS.read_text()
+
+    assert '{ label: "Sheets", value: pluralize(sum("pages_generated"), "sheet") },' in script
+    assert 'bundleResult?.success && (isCover || (bundleResult.pages_generated ?? 0) > 0)' in script
+
+
+def test_app_js_reads_result_details_from_fields_not_prose() -> None:
+    script = APP_JS.read_text()
+
+    assert 'describeLeftOutImages(result.images_dropped ?? 0),' in script
+    assert 'result.images_skipped > 0' in script
+    assert 'result.backgrounds_cleaned > 0' in script
 
 
 def test_app_js_routes_every_request_through_the_error_aware_helper() -> None:
