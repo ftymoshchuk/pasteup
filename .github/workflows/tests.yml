@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         # 3.11 is the floor: mullion and the app's StrEnum use need it.
-        python-version: ["3.11", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v5
 
@@ -45,12 +45,55 @@ jobs:
       - name: Test
         run: pytest -rs
 
+  # The package as users get it from PyPI: build it, check the README renders
+  # there, and install the wheel where the checkout cannot stand in for it.
+  # The release workflow repeats this; here a slip shows up on the pull request
+  # instead of at release time.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - run: python -m pip install build twine
+      - run: python -m build
+      - run: python -m twine check --strict dist/*
+
+      - name: The built wheel installs, runs and carries the app's files
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/wheelcheck
+          /tmp/wheelcheck/bin/python -m pip install --quiet dist/*.whl
+          cd /tmp
+          /tmp/wheelcheck/bin/pasteup --version
+          /tmp/wheelcheck/bin/python - <<'PY'
+          import pathlib
+
+          import pasteup
+
+          root = pathlib.Path(pasteup.__file__).parent
+          assert "site-packages" in str(root), root
+          for asset in (
+              "templates/index.html",
+              "static/js/app.js",
+              "static/css/styles.css",
+              "static/favicon.svg",
+              "static/fonts/caveat-latin-700.woff2",
+              "static/fonts/patrick-hand-latin-400.woff2",
+          ):
+              assert (root / asset).is_file(), f"{asset} did not ship"
+          print("wheel ok:", pasteup.__version__)
+          PY
+
   # The aggregate gate, as in sigrix-io/mullion: the one check the branch
   # ruleset requires on main, so changing the matrix or adding a job does not
   # mean editing the ruleset to match.
   ci-passed:
     if: always()
-    needs: [test]
+    needs: [test, build]
     runs-on: ubuntu-latest
     steps:
       - name: Every job succeeded
