@@ -157,7 +157,7 @@ Validates selected batch subfolders under a scanned parent folder and reports wh
 - `message` (str): validation summary.
 
 ### `POST /api/jobs/generate`
-Used by the UI when **Single folder** mode is selected. Scans one folder, composes pages with a fixed 4x3 layout, and exports files.
+Used by the UI in **One bundle** mode. Scans one folder, composes pages with a fixed 4x3 layout, and exports files.
 
 **Request body**
 ```json
@@ -227,7 +227,7 @@ and the response message gives ffmpeg's error.
 - `message` (str): generation summary
 
 ### `POST /api/jobs/generate-all-folders`
-Used by the UI when **Batch folders** mode is selected. Iterates bundle folders under a parent folder and writes each folder's generated pages under a created output root.
+Used by the UI in **Many bundles** mode. Iterates bundle folders under a parent folder and writes each folder's generated pages under a created output root.
 
 **Request body**
 ```json
@@ -255,22 +255,30 @@ Used by the UI when **Batch folders** mode is selected. Iterates bundle folders 
 
 ---
 
-## Sample UX Flow
-1. Open `/` in browser.
-2. Choose **Single folder** or **Batch folders** from the mode selector near the generation controls.
-3. Enter the path fields using the labels shown for the selected mode:
-   - **Single folder**: `Input folder` + `Output folder`
-   - **Batch folders**: `Parent folder` + `Created output folder`
-4. (Optional) Adjust page settings (`width`, `height`, `units`, `DPI`, `gap`,
-   `margin`, `format`), and the background-cleaning controls if your source
-   images sit on an off-white background.
-5. Click **Scan folder** to validate the current input path.
-   - Confirm `valid: true`, image count, and estimated pages.
-6. Click **Generate pages** to call the endpoint for the selected mode:
-   - **Single folder** → `POST /api/jobs/generate`
-   - **Batch folders** → `POST /api/jobs/generate-all-folders`
-7. Click **Cover collage** only when you want the separate `POST /api/jobs/generate-cover-collage` action for a single folder.
-8. Review the output directory for generated `page_###.png` or `page_###.jpg` files.
+## Using the app
+1. Run `pasteup` and open `http://127.0.0.1:8000/`.
+2. **Pick your clip art.** Choose **One bundle** (a folder of images) or **Many
+   bundles** (a folder with one folder inside per bundle), enter the folder and
+   click **Scan folder**. Results go in a `---Created---` folder next to it.
+   - One bundle: **Folder check** says how many images it found and how many
+     full sheets of 12 they make. If the folder holds only other folders, pick
+     one under **Choose folders**.
+   - Many bundles: every bundle inside is listed, picked and checked in one go.
+     Untick any you want to skip. A bundle that fails its check can be unticked,
+     or fixed and checked again with **Check selected bundles**.
+3. **Set up the page.** Size, units, DPI and format apply to sheets and covers
+   alike. **Clean up white backgrounds** can make near-white backgrounds pure
+   white or transparent.
+4. **Make your images.**
+   - **Preview sheets:** every image, 12 to a page (`POST /api/jobs/generate`,
+     or `POST /api/jobs/generate-all-folders` for many bundles), optionally with a
+     part-filled last page and an MP4 preview video.
+   - **Cover collage:** one cover in the chosen layout
+     (`POST /api/jobs/generate-cover-collage`, or
+     `POST /api/jobs/generate-cover-collage-batch`). **Only use certain images**
+     limits it to the files you name.
+5. **Your files** lists what was made and where it was saved; **Copy** puts a
+   path on the clipboard.
 
 ---
 
@@ -336,7 +344,8 @@ or `gap`, or enlarge the page.
 ### Some images are missing from the output
 Trailing images that do not fill a complete 12-image page are left out by
 default. The response's `images_dropped` says how many; set
-`include_partial_page: true` to render them on a final, partly-filled page.
+`include_partial_page: true` (in the app, tick **Include a part-filled last
+page**) to render them on a final, partly-filled page.
 
 ### Invalid folder path
 Symptoms:
@@ -393,3 +402,9 @@ exporter, so a bad mullion upgrade still fails here.
 ## License
 Apache License 2.0, see [LICENSE](LICENSE). Security reports: see
 [SECURITY.md](SECURITY.md).
+
+The handwriting fonts the app ships with, [Caveat](https://fonts.google.com/specimen/Caveat)
+and [Patrick Hand](https://fonts.google.com/specimen/Patrick+Hand), are under the
+SIL Open Font License 1.1; their licence texts are in
+[src/pasteup/static/fonts](src/pasteup/static/fonts). They are bundled rather
+than fetched, so the app needs no internet connection.

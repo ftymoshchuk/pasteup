@@ -217,6 +217,7 @@ class GenerationResponse(BaseModel):
     video_file: str | None = None
     video_created: bool = False
     images_dropped: int = 0
+    images_skipped: int = 0
     backgrounds_cleaned: int = 0
     page_geometry: str | None = None
     message: str

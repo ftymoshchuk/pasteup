@@ -1,34 +1,36 @@
-const THEME_STORAGE_KEY = "pasteup-theme";
+// Matches IMAGES_PER_PAGE in services/image_batcher.py: a sheet is a 4 x 3 grid.
+const IMAGES_PER_SHEET = 12;
+const PART_FILLED_OPTION = "“Include a part-filled last page”";
 const GENERATION_MODES = {
   single: {
-    inputLabel: "Input folder",
-    outputLabel: "Output folder",
+    inputLabel: "Bundle folder",
+    outputLabel: "Saves to",
     endpoint: "/api/jobs/generate",
     payload: () => ({
       folder_path: readWorkingFolderPath(),
       output_path: outputFolderEl.value.trim(),
       ...readCommonGenerationSettings(),
     }),
-    statusMessage: "Running page generation...",
-    buttonText: "Run page generation",
-    helpText: "Single folder is best when you already know exactly which image folder you want to process.",
-    modeStepCopy: "Choose Single folder for one image set, or Batch folders to process each image folder inside a parent directory.",
-    folderStepCopy: "Enter the folder to inspect and the folder where completed output should be saved.",
-    outputStepCopy: "After a successful scan, create pages from the current folder or build a cover collage with the template that best fits your overview image.",
-    outputHintReady: "Scan complete. You can now run page generation or build a cover collage template for this folder.",
+    statusMessage: "Making preview sheets…",
+    buttonText: "Make preview sheets",
+    helpText: "Point Pasteup at the folder that holds one bundle's images.",
+    modeStepCopy: "Counts your images and checks they can be read.",
+    folderStepCopy: "Results go in a ---Created--- folder next to it.",
+    outputStepCopy: "Preview sheets of every image, or one cover for the listing.",
+    outputHintReady: "Ready! Make preview sheets, a cover, or both.",
   },
   batch: {
-    inputLabel: "Parent folder",
-    outputLabel: "Created output root",
+    inputLabel: "Folder of bundles",
+    outputLabel: "Saves to",
     endpoint: "/api/jobs/generate-all-folders",
     payload: () => readBatchFolderPayload(),
-    statusMessage: "Running batch page generation for the validated selected folders...",
-    buttonText: "Generate pages for selected batch folders",
-    helpText: "Batch folders is best when one parent folder contains several image folders you want to process together.",
-    modeStepCopy: "Batch folders scans a parent directory first so eligible child folders appear for review before you generate output.",
-    folderStepCopy: "Enter the parent folder to inspect and the shared created-output root where generated child folders should be written after you scan the parent folder, choose the batch folders to include, and scan the selected batch folders.",
-    outputStepCopy: "After you scan the parent folder, review the eligible child folders, validate the selected folders, then run batch page generation or batch cover-collage generation for that validated selection.",
-    outputHintReady: "Selected batch folders scanned successfully. You can now run batch page generation or batch cover-collage generation for the validated selection.",
+    statusMessage: "Making preview sheets for the selected bundles…",
+    buttonText: "Make preview sheets",
+    helpText: "Point Pasteup at a folder with one folder inside per bundle.",
+    modeStepCopy: "Lists the bundle folders inside and checks each one.",
+    folderStepCopy: "Each bundle gets its own folder inside a ---Created--- folder next to it.",
+    outputStepCopy: "Preview sheets or a cover for every bundle you checked.",
+    outputHintReady: "Ready! Make images for the checked bundles.",
   },
 };
 
@@ -64,7 +66,6 @@ const generateButton = document.getElementById("generate-button");
 const coverCollageButton = document.getElementById("cover-collage-button");
 const outputActionsSectionEl = document.getElementById("output-actions-section");
 const outputActionsHintEl = document.getElementById("output-actions-hint");
-const themeToggleButton = document.getElementById("theme-toggle");
 const scanResultEl = document.getElementById("scan-result");
 const generationResultEl = document.getElementById("generation-result");
 const subfolderSectionEl = document.getElementById("subfolder-picker-section");
@@ -78,6 +79,8 @@ const clearSubfolderSelectionButton = document.getElementById("clear-subfolder-s
 const batchScanButton = document.getElementById("batch-scan-button");
 const batchSelectionSummaryEl = document.getElementById("batch-selection-summary");
 const batchSelectionStatusEl = document.getElementById("batch-selection-status");
+const videoSettingsEl = document.getElementById("video-settings");
+const backgroundCleanSettingsEl = document.getElementById("background-clean-settings");
 
 const generationState = {
   mode: document.querySelector('input[name="generation-mode"]:checked')?.value || "single",
@@ -108,7 +111,7 @@ async function postJson(url, payload) {
       body: JSON.stringify(payload),
     });
   } catch (error) {
-    return { ok: false, data: null, errorMessage: `Could not reach the app server. Is it still running? (${error.message})` };
+    return { ok: false, data: null, errorMessage: `Can't reach Pasteup. Is it still running? (${error.message})` };
   }
 
   let data = null;
@@ -163,7 +166,23 @@ async function runExclusive(action) {
 
 function setBusy(isBusy) {
   generationState.busy = Boolean(isBusy);
+  document.body.classList.toggle("is-busy", generationState.busy);
   recomputeStepFiveState();
+}
+
+// Each result card sits beside its step on wide screens and below it on narrow
+// ones, where it can be out of view; bring the one about to change into view.
+function revealResult(container) {
+  const panel = container.closest(".result-panel") || container;
+  const { top } = panel.getBoundingClientRect();
+  if (top < 0 || top > window.innerHeight * 0.75) {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    panel.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  }
+}
+
+function fileName(path) {
+  return String(path).split(/[\\/]/).pop() || String(path);
 }
 
 // Print resolution and background cleaning. Kept separate from the video
@@ -171,12 +190,17 @@ function setBusy(isBusy) {
 // than spreading everything, can pick these up without also sending video keys
 // their endpoint does not accept.
 function readOutputQualitySettings() {
+  const backgroundCleanMode = backgroundCleanModeEl?.value || "off";
   return {
     page_unit: pageUnitEl?.value || "px",
     dpi: Number(dpiEl?.value) || 300,
-    background_clean_mode: backgroundCleanModeEl?.value || "off",
-    background_tolerance: Number(backgroundToleranceEl?.value ?? 240),
-    background_feather: Number(backgroundFeatherEl?.value ?? 1),
+    background_clean_mode: backgroundCleanMode,
+    // Hidden while cleaning is off, so only sent when it is on: a value left
+    // out of range in a hidden field must not fail the request.
+    ...(backgroundCleanMode === "off" ? {} : {
+      background_tolerance: Number(backgroundToleranceEl?.value ?? 240),
+      background_feather: Number(backgroundFeatherEl?.value ?? 1),
+    }),
   };
 }
 
@@ -190,17 +214,35 @@ function readCommonGenerationSettings() {
     margin: Number(marginEl.value),
     format: formatEl.value,
     create_preview_video: Boolean(createPreviewVideoEl?.checked),
-    duration_seconds: Number(videoDurationSecondsEl?.value),
+    // Likewise hidden while no video is wanted.
+    duration_seconds: createPreviewVideoEl?.checked ? Number(videoDurationSecondsEl?.value) : undefined,
     transition: videoTransitionEl?.value || "none",
   };
 }
 
+// Point at the field to fix: open the section it is in, then let the browser
+// focus it and show its own range message beside it.
+function reportSettingsProblem(message, field) {
+  renderResultCard(generationResultEl, { tone: "warning", badgeLabel: "Check settings", message });
+  const disclosure = field?.closest("details");
+  if (disclosure) {
+    disclosure.open = true;
+  }
+  if (field?.reportValidity()) {
+    field.focus();
+  }
+}
+
 function validateVideoGenerationSettings() {
+  if (!createPreviewVideoEl?.checked) {
+    return true;
+  }
+
   const commonSettings = readCommonGenerationSettings();
   const maxDurationSeconds = Number(videoDurationSecondsEl?.max) || 120;
 
   if (!(commonSettings.duration_seconds > 0) || commonSettings.duration_seconds > maxDurationSeconds) {
-    renderPendingResult(generationResultEl, "Invalid settings", `Duration must be greater than 0 and at most ${maxDurationSeconds} seconds.`);
+    reportSettingsProblem(`The video must be 1 to ${maxDurationSeconds} seconds long.`, videoDurationSecondsEl);
     return false;
   }
 
@@ -211,12 +253,21 @@ function validateOutputQualitySettings() {
   const quality = readOutputQualitySettings();
 
   if (!Number.isFinite(quality.dpi) || quality.dpi <= 0 || quality.dpi > 1200) {
-    renderPendingResult(generationResultEl, "Invalid settings", "DPI must be between 1 and 1200.");
+    reportSettingsProblem("DPI must be between 1 and 1200.", dpiEl);
     return false;
   }
 
-  if (quality.background_tolerance < 0 || quality.background_tolerance > 255) {
-    renderPendingResult(generationResultEl, "Invalid settings", "Background tolerance must be between 0 and 255.");
+  if (quality.background_clean_mode === "off") {
+    return true;
+  }
+
+  if (!(quality.background_tolerance >= 0 && quality.background_tolerance <= 255)) {
+    reportSettingsProblem("Tolerance must be between 0 and 255.", backgroundToleranceEl);
+    return false;
+  }
+
+  if (!(quality.background_feather >= 0 && quality.background_feather <= 25)) {
+    reportSettingsProblem("Edge softening must be between 0 and 25.", backgroundFeatherEl);
     return false;
   }
 
@@ -277,13 +328,35 @@ function setBatchValidationResults(results = []) {
   generationState.validatedBatchFolders = generationState.batchValidationResults
     .filter((result) => result?.valid && typeof result.folderPath === "string")
     .map((result) => result.folderPath);
+  refreshBatchValidationReadiness();
+}
+
+// A selection is ready when every picked bundle passed its last check, so
+// unticking a bundle (say, one that failed) needs no new check; picking one
+// that was never checked, or that failed, does.
+function refreshBatchValidationReadiness() {
   const selectedPaths = getSelectedBatchFolderPaths();
-  generationState.validatedBatchSelectionSignature = generationState.batchValidationResults.length > 0
+  const validatedPathSet = new Set(generationState.validatedBatchFolders);
+  generationState.batchValidationReady = selectedPaths.length > 0
+    && selectedPaths.every((folderPath) => validatedPathSet.has(folderPath));
+  generationState.validatedBatchSelectionSignature = generationState.batchValidationReady
     ? getBatchSelectionSignature(selectedPaths)
     : "";
-  generationState.batchValidationReady = selectedPaths.length > 0
-    && generationState.validatedBatchFolders.length === selectedPaths.length
-    && generationState.validatedBatchSelectionSignature === getBatchSelectionSignature(selectedPaths);
+}
+
+// After the picks change, readiness and the check card follow the new picks.
+function applyBatchSelectionChange() {
+  refreshBatchValidationReadiness();
+  if (generationState.batchValidationResults.length > 0) {
+    renderBatchCheckSummary();
+  }
+}
+
+function countFailedSelectedBatchFolders() {
+  const selectedPathSet = new Set(getSelectedBatchFolderPaths());
+  return generationState.batchValidationResults
+    .filter((result) => !result?.valid && selectedPathSet.has(result?.folderPath))
+    .length;
 }
 
 function hasValidatedBatchSelection() {
@@ -480,28 +553,35 @@ function getBatchSelectionValidationMessage() {
 
   const { availableCount, selectedCount, isAllSelected, selectedBatchFolders } = getBatchGenerationSelectionDetails();
   if (!generationState.batchParentScanComplete) {
-    return "Run the parent-folder scan first to discover detected child folders for batch mode.";
+    return "Scan the folder of bundles to list them.";
   }
 
   if (availableCount === 0) {
-    return "No detected child folders are available yet. Run a scan on a parent folder to load batch options.";
+    return "No bundle folders were found inside it.";
   }
 
   if (selectedCount === 0) {
-    return `No folders selected. Choose all ${availableCount} detected child folders or select at least one before running the selected-folder scan.`;
+    return `Pick at least one of the ${pluralize(availableCount, "bundle")}.`;
   }
 
   if (!hasValidatedBatchSelection()) {
-    return `Selected ${selectedCount} detected ${selectedCount === 1 ? "batch folder" : "batch folders"}. Run Scan selected folders successfully for this exact selection before page generation.`;
+    const failedCount = countFailedSelectedBatchFolders();
+    if (failedCount > 0) {
+      return failedCount === 1
+        ? "1 picked bundle needs attention. Untick it, or fix it and check again."
+        : `${failedCount} picked bundles need attention. Untick them, or fix them and check again.`;
+    }
+
+    return `${pluralize(selectedCount, "bundle")} picked. Check ${selectedCount === 1 ? "it" : "them"} before making images.`;
   }
 
   const validatedSelectedCount = selectedCount;
 
-  if (isAllSelected) {
-    return `Selected batch folders scanned successfully. Ready to generate pages for all ${availableCount} validated batch folders.`;
+  if (isAllSelected && availableCount > 1) {
+    return `All ${availableCount} bundles are checked and ready.`;
   }
 
-  return `Selected batch folders scanned successfully. Ready to generate pages for ${validatedSelectedCount} validated ${validatedSelectedCount === 1 ? "batch folder" : "batch folders"}.`;
+  return `${pluralize(validatedSelectedCount, "bundle")} checked and ready.`;
 }
 
 function updateBatchSelectionStatus() {
@@ -557,30 +637,26 @@ function getGenerationButtonLabel() {
   const previewVideoEnabled = Boolean(createPreviewVideoEl?.checked);
 
   if (generationState.mode !== "batch") {
-    return previewVideoEnabled ? "Run page generation + preview video" : getSelectedGenerationModeConfig().buttonText;
+    return previewVideoEnabled ? "Make sheets + video" : getSelectedGenerationModeConfig().buttonText;
   }
 
   const { selectedCount } = getBatchGenerationSelectionDetails();
 
   if (selectedCount === 0) {
-    return previewVideoEnabled
-      ? "Generate pages + preview video for selected batch folders"
-      : "Generate pages for selected batch folders";
-  }
-
-  if (selectedCount === 1) {
-    return previewVideoEnabled
-      ? "Generate pages + preview video for 1 selected batch folder"
-      : "Generate pages for 1 selected batch folder";
+    return previewVideoEnabled ? "Make sheets + videos" : "Make preview sheets";
   }
 
   return previewVideoEnabled
-    ? `Generate pages + preview video for ${selectedCount} selected batch folders`
-    : `Generate pages for ${selectedCount} selected batch folders`;
+    ? `Make sheets + videos for ${pluralize(selectedCount, "bundle")}`
+    : `Make sheets for ${pluralize(selectedCount, "bundle")}`;
 }
 
 function updatePreviewVideoControls() {
   const previewVideoEnabled = Boolean(createPreviewVideoEl?.checked);
+
+  if (videoSettingsEl) {
+    videoSettingsEl.hidden = !previewVideoEnabled;
+  }
 
   if (videoDurationSecondsEl) {
     videoDurationSecondsEl.disabled = !previewVideoEnabled;
@@ -591,28 +667,31 @@ function updatePreviewVideoControls() {
   }
 
   if (createPreviewVideoHelpEl) {
-    createPreviewVideoHelpEl.innerHTML = previewVideoEnabled
-      ? "Preview video is enabled. Click <strong>Generate pages</strong> to create pages and the video together."
-      : "Enable this, then click <strong>Generate pages</strong>. Video creation runs as part of page generation.";
+    createPreviewVideoHelpEl.textContent = previewVideoEnabled
+      ? "Made with the sheets. Etsy takes videos of 5 to 15 seconds."
+      : "An MP4 slideshow of the sheets, made at the same time.";
+  }
+}
+
+// Tolerance and edge softening only mean something once cleaning is on.
+function updateBackgroundCleanControls() {
+  if (backgroundCleanSettingsEl) {
+    backgroundCleanSettingsEl.hidden = (backgroundCleanModeEl?.value || "off") === "off";
   }
 }
 
 function getCoverCollageButtonLabel() {
   if (generationState.mode !== "batch") {
-    return "Build cover collage";
+    return "Make cover";
   }
 
   const { selectedCount } = getBatchGenerationSelectionDetails();
 
   if (selectedCount === 0) {
-    return "Build cover collage for selected folders";
+    return "Make covers";
   }
 
-  if (selectedCount === 1) {
-    return "Build cover collage for 1 selected folder";
-  }
-
-  return `Build cover collage for ${selectedCount} selected folders`;
+  return selectedCount === 1 ? "Make cover for 1 bundle" : `Make covers for ${selectedCount} bundles`;
 }
 
 function getGenerationStatusMessage() {
@@ -620,56 +699,46 @@ function getGenerationStatusMessage() {
     return getSelectedGenerationModeConfig().statusMessage;
   }
 
-  const { availableCount, selectedCount, isAllSelected } = getBatchGenerationSelectionDetails();
+  const { availableCount, selectedCount } = getBatchGenerationSelectionDetails();
   if (availableCount === 0 || selectedCount === 0) {
-    return "Running page generation for the validated selected batch folders from the detected batch list...";
+    return getSelectedGenerationModeConfig().statusMessage;
   }
 
-  if (isAllSelected) {
-    return `Running page generation for all ${availableCount} validated ${availableCount === 1 ? "batch folder" : "batch folders"}...`;
-  }
-
-  return `Running page generation for the validated selected batch folders: ${selectedCount} ${selectedCount === 1 ? "batch folder" : "batch folders"}...`;
+  return `Making preview sheets for ${pluralize(selectedCount, "bundle")}…`;
 }
 
 function getOutputActionsHint() {
   if (generationState.mode !== "batch") {
     if (!generationState.singleFolderReady) {
-      return "Output actions stay disabled until the scan confirms the selected folder is ready.";
+      return "Scan a folder first. These unlock once it has images.";
     }
     return getSelectedGenerationModeConfig().outputHintReady;
   }
 
   const { availableCount, selectedCount, isAllSelected } = getBatchGenerationSelectionDetails();
   if (!generationState.batchParentScanComplete) {
-    return "Run the parent-folder scan first to discover available child folders for batch mode. Then choose folders and scan the selected batch folders before batch page or cover-collage generation.";
+    return "Scan the folder of bundles first.";
   }
 
   if (availableCount === 0) {
-    return "Parent-folder scan complete, but no detected child folders are available for batch generation yet.";
+    return "No bundle folders were found to make images for.";
   }
 
   if (selectedCount === 0) {
-    return `Parent-folder scan complete. Select at least one of the ${availableCount} detected child folders, then run Scan selected folders to validate the chosen batch folders.`;
+    return "Pick bundles in step 1, then check them.";
   }
 
   if (!hasValidatedBatchSelection()) {
-    return `Batch output stays disabled because the current selection of ${selectedCount} ${selectedCount === 1 ? "batch folder has" : "batch folders have"} not been scanned successfully by Scan selected folders yet.`;
+    return countFailedSelectedBatchFolders() > 0
+      ? "Some picked bundles need attention. See step 1."
+      : `Check the ${pluralize(selectedCount, "picked bundle")} in step 1 first.`;
   }
 
   if (isAllSelected && availableCount > 1) {
-    return `Selected batch folders scanned successfully. Batch page generation and batch cover-collage generation will run for all ${availableCount} selected validated batch folders.`;
+    return `Ready! Make images for all ${availableCount} bundles.`;
   }
 
-  if (selectedCount > 1) {
-    return `Selected batch folders scanned successfully. Batch page generation and batch cover-collage generation are ready for the validated selection: ${selectedCount} batch folders.`;
-  }
-
-  if (!isCoverCollageReady()) {
-    return "Selected batch folders scanned successfully. Batch page generation and batch cover-collage generation are ready for the one validated batch folder once output actions are enabled.";
-  }
-
-  return "Selected batch folders scanned successfully. Batch page generation and batch cover-collage generation are ready for the current validated batch selection.";
+  return `Ready! Make images for ${pluralize(selectedCount, "bundle")}.`;
 }
 
 function updateOutputActionState() {
@@ -713,27 +782,27 @@ function updateBatchSelectionSummary() {
     .map(({ displayName }) => displayName);
 
   if (!generationState.batchParentScanComplete) {
-    batchSelectionSummaryEl.textContent = "Run the parent-folder scan to discover child folders for this batch.";
+    batchSelectionSummaryEl.textContent = "Scan the folder of bundles to list them.";
     updateBatchSelectionStatus();
     return;
   }
 
   if (availableCount === 0) {
-    batchSelectionSummaryEl.textContent = "No detected child folders are available yet.";
+    batchSelectionSummaryEl.textContent = "No bundle folders found yet.";
     updateBatchSelectionStatus();
     return;
   }
 
   if (selectedCount === 0) {
-    batchSelectionSummaryEl.textContent = `Selected 0 of ${availableCount} detected child folders.`;
+    batchSelectionSummaryEl.textContent = `0 of ${pluralize(availableCount, "bundle")} picked.`;
     updateBatchSelectionStatus();
     return;
   }
 
   const summarySuffix = selectedLabels.length > 0
-    ? ` ${selectedLabels.join(", ")}`
+    ? `: ${selectedLabels.join(", ")}`
     : "";
-  batchSelectionSummaryEl.textContent = `Selected ${selectedCount} of ${availableCount} detected child folders.${summarySuffix}`;
+  batchSelectionSummaryEl.textContent = `${selectedCount} of ${pluralize(availableCount, "bundle")} picked${summarySuffix}.`;
   updateBatchSelectionStatus();
 }
 
@@ -747,7 +816,7 @@ function renderBatchSubfolderChecklist() {
   if (generationState.availableSubfolders.length === 0) {
     const emptyState = document.createElement("p");
     emptyState.className = "muted-text";
-    emptyState.textContent = "Run a scan on a parent folder to load detected child folders.";
+    emptyState.textContent = "Scan a folder of bundles to list them here.";
     batchSubfolderChecklistEl.append(emptyState);
     return;
   }
@@ -772,7 +841,7 @@ function renderBatchSubfolderChecklist() {
         })
         .map(({ fullPath: availablePath }) => availablePath);
       setSelectedBatchFolders(nextSelection);
-      setBatchValidationResults([]);
+      applyBatchSelectionChange();
       renderBatchSubfolderChecklist();
       recomputeStepFiveState();
     });
@@ -814,27 +883,6 @@ function applyGenerationMode() {
   updateSubfolderControlVisibility();
   updatePreviewVideoControls();
   recomputeStepFiveState();
-}
-
-function setTheme(theme) {
-  const resolvedTheme = theme === "light" ? "light" : "dark";
-  document.documentElement.dataset.theme = resolvedTheme;
-  localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
-  const isDark = resolvedTheme === "dark";
-  const nextThemeLabel = isDark ? "soft light" : "terminal dark";
-  const currentThemeLabel = isDark ? "terminal dark" : "soft light";
-
-  themeToggleButton.textContent = isDark
-    ? "Switch to soft light"
-    : "Switch to terminal dark";
-  themeToggleButton.setAttribute("aria-pressed", String(isDark));
-  themeToggleButton.setAttribute("aria-label", `Current theme: ${currentThemeLabel}. Activate to switch to ${nextThemeLabel}.`);
-  themeToggleButton.setAttribute("title", `Theme: ${currentThemeLabel}`);
-}
-
-function restoreTheme() {
-  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-  setTheme(savedTheme || document.documentElement.dataset.theme || "dark");
 }
 
 function resetScanReadyState() {
@@ -945,34 +993,42 @@ function pluralize(count, noun) {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-function renderListSection(title, items, emptyMessage = "") {
+// Long lists (every file of a big bundle) end in "and N more" rather than
+// stretching the card far past the screen.
+function renderListSection(title, items, emptyMessage = "", { limit = 8 } = {}) {
   if (!Array.isArray(items) || items.length === 0) {
     return emptyMessage
-      ? `<section class="result-section"><h4>${escapeHtml(title)}</h4><p class="result-empty">${escapeHtml(emptyMessage)}</p></section>`
+      ? `<section class="result-section"><h3>${escapeHtml(title)}</h3><p class="result-empty">${escapeHtml(emptyMessage)}</p></section>`
       : "";
   }
 
-  const listItems = items
+  const shownItems = items.slice(0, limit);
+  const hiddenCount = items.length - shownItems.length;
+  const listItems = shownItems
     .map((item) => `<li class="result-list__item"><span>${escapeHtml(item)}</span></li>`)
-    .join("");
+    .join("")
+    + (hiddenCount > 0 ? `<li class="result-list__more">and ${hiddenCount} more</li>` : "");
 
   return `
     <section class="result-section">
-      <h4>${escapeHtml(title)}</h4>
+      <h3>${escapeHtml(title)}</h3>
       <ul class="result-list">${listItems}</ul>
     </section>
   `;
 }
 
-function renderPathSection(title, pathValue) {
+function renderPathSection(title, pathValue, copyLabel) {
   if (!pathValue) {
     return "";
   }
 
   return `
     <section class="result-section">
-      <h4>${escapeHtml(title)}</h4>
-      <pre class="result-path">${escapeHtml(pathValue)}</pre>
+      <h3>${escapeHtml(title)}</h3>
+      <div class="result-path">
+        <code>${escapeHtml(pathValue)}</code>
+        <button class="copy-button" type="button" data-copy="${escapeHtml(pathValue)}" aria-label="${escapeHtml(copyLabel)}">Copy</button>
+      </div>
     </section>
   `;
 }
@@ -1004,165 +1060,250 @@ function renderResultCard(container, {
   tone = "neutral",
   badgeLabel = "Status",
   message = "",
+  notes = [],
   summaryRows = [],
   sections = [],
 } = {}) {
-  const labelledBy = container.parentElement?.getAttribute("aria-labelledby");
-  const headingText = labelledBy ? document.getElementById(labelledBy)?.textContent?.trim() : "";
-  const panelLabel = container.dataset.resultTitle || headingText || "Command output";
-  if (container.parentElement) {
-    container.parentElement.dataset.panelLabel = `[${panelLabel}]`;
-  }
+  const noteItems = notes
+    .filter(Boolean)
+    .map((note) => `<li>${escapeHtml(note)}</li>`)
+    .join("");
+
   container.innerHTML = `
     <div class="result-card__header">
       <span class="result-badge result-badge--${escapeHtml(tone)}">${escapeHtml(badgeLabel)}</span>
       <p class="result-message">${escapeHtml(message)}</p>
     </div>
+    ${noteItems ? `<ul class="result-notes">${noteItems}</ul>` : ""}
     ${renderSummaryRows(summaryRows)}
     <div class="result-sections">${sections.filter(Boolean).join("")}</div>
   `;
 }
 
+function describeFoundImages(imageCount, fullSheets) {
+  if (fullSheets === 0) {
+    return `Found ${pluralize(imageCount, "image")}: not enough to fill a sheet of ${IMAGES_PER_SHEET}.`;
+  }
+
+  const leftOver = imageCount - fullSheets * IMAGES_PER_SHEET;
+  return `Found ${pluralize(imageCount, "image")}: enough for ${pluralize(fullSheets, "full sheet")}${leftOver > 0 ? `, with ${leftOver} left over` : ""}.`;
+}
+
+// Said before anything is made, because by default left-over images are skipped.
+function describeLeftOverTip(imageCount, fullSheets) {
+  if (imageCount - fullSheets * IMAGES_PER_SHEET <= 0) {
+    return "";
+  }
+
+  return fullSheets === 0
+    ? `Tick ${PART_FILLED_OPTION} in step 3 to make a sheet anyway.`
+    : `Left-over images are skipped unless you tick ${PART_FILLED_OPTION} in step 3.`;
+}
+
 function renderScanSummary(result) {
   const imageCount = result.image_count ?? 0;
-  const estimatedPages = result.estimated_pages ?? 0;
+  const fullSheets = result.estimated_pages ?? 0;
   const availableSubfolders = Array.isArray(result.available_subfolders)
     ? result.available_subfolders.map(normalizeSubfolderOption).filter(Boolean)
     : [];
+  const folderNames = availableSubfolders.map(({ displayName }) => displayName);
   const sampleFiles = Array.isArray(result.sample_files) ? result.sample_files : [];
-  const hasImages = imageCount > 0;
+  const isBatchMode = generationState.mode === "batch";
+
+  // A folder of bundles has no images of its own: finding bundles inside is
+  // the good outcome there, not a problem.
+  if (isBatchMode && availableSubfolders.length > 0) {
+    renderResultCard(scanResultEl, {
+      tone: "success",
+      badgeLabel: "Bundles found",
+      message: `Found ${pluralize(availableSubfolders.length, "bundle folder")}.`,
+      sections: [renderListSection("Bundles", folderNames)],
+    });
+    return;
+  }
+
+  // Each mode pointed at the other mode's kind of folder: say which mode fits.
+  if (!isBatchMode && !result.valid && availableSubfolders.length > 0) {
+    renderResultCard(scanResultEl, {
+      tone: "warning",
+      badgeLabel: "Pick a folder",
+      message: `No images here, but there ${availableSubfolders.length === 1 ? "is 1 folder" : `are ${availableSubfolders.length} folders`} inside.`,
+      notes: ["Pick one in step 1, or switch to “Many bundles” to make images for each of them."],
+      sections: [renderListSection("Folders inside", folderNames)],
+    });
+    return;
+  }
+
+  if (isBatchMode && result.valid) {
+    renderResultCard(scanResultEl, {
+      tone: "warning",
+      badgeLabel: "Needs attention",
+      message: `This folder has ${pluralize(imageCount, "image")} but no bundle folders inside.`,
+      notes: ["Switch to “One bundle” to make images from it."],
+    });
+    return;
+  }
+
+  if (!result.valid) {
+    renderResultCard(scanResultEl, {
+      tone: "warning",
+      badgeLabel: "Needs attention",
+      message: result.message || "This folder can't be used yet.",
+    });
+    return;
+  }
 
   renderResultCard(scanResultEl, {
-    tone: result.valid ? "success" : "warning",
-    badgeLabel: result.valid ? "Ready" : "Needs attention",
-    message: result.message || (result.valid ? "Folder is ready." : "We couldn't use this folder yet."),
-    summaryRows: [
-      { label: "Images", value: pluralize(imageCount, "image") },
-      { label: "Estimated pages", value: pluralize(estimatedPages, "page") },
-      {
-        label: "Folder options",
-        value: availableSubfolders.length > 0 ? pluralize(availableSubfolders.length, "subfolder") : "None",
-      },
-    ],
-    sections: [
-      renderListSection(
-        "Sample files",
-        sampleFiles,
-        hasImages ? "No sample files were returned for this scan." : "Add images to this folder to preview sample files.",
-      ),
-      renderListSection(
-        "Available subfolders",
-        availableSubfolders.map(({ displayName, fullPath }) =>
-          displayName === fullPath ? displayName : `${displayName} (${fullPath})`,
-        ),
-      ),
-    ],
+    tone: "success",
+    badgeLabel: "Ready",
+    message: describeFoundImages(imageCount, fullSheets),
+    notes: [describeLeftOverTip(imageCount, fullSheets)],
+    sections: [renderListSection("First few files", sampleFiles)],
   });
 }
 
-function renderBatchFolderOutcomeSection(results) {
+function describeLeftOutImages(count) {
+  if (!(count > 0)) {
+    return "";
+  }
+
+  return count === 1
+    ? `1 image didn't fill a sheet, so it was left out. Tick ${PART_FILLED_OPTION} to keep it.`
+    : `${count} images didn't fill a sheet, so they were left out. Tick ${PART_FILLED_OPTION} to keep them.`;
+}
+
+// A video that fails does not fail the sheets: the server explains it at the
+// end of its message, which is the part worth showing.
+function describeVideoProblem(message) {
+  const start = typeof message === "string" ? message.indexOf("Preview video was requested") : -1;
+  return start >= 0 ? message.slice(start) : "The preview video couldn't be made.";
+}
+
+function renderBatchFolderOutcomeSection(results, kind) {
   if (!Array.isArray(results) || results.length === 0) {
     return "";
   }
 
-  const listItems = results
-    .map((result) => {
-      const folderName = result.folder_name || result.displayName || result.output_path || "Folder";
-      const status = result.success ? "Success" : "Failed";
+  const requestedPreviewVideo = kind !== "cover" && Boolean(createPreviewVideoEl?.checked);
+  const lines = results.map((result) => {
+    const folderName = result.folder_name || result.displayName || fileName(result.output_path || "") || "Bundle";
+    if (!result.success) {
+      return `${folderName}: ${result.message || "failed."}`;
+    }
+
+    if (kind === "cover") {
       const outputFiles = Array.isArray(result.output_files) ? result.output_files : [];
-      const outputSummary = outputFiles.length > 0
-        ? outputFiles.join(", ")
-        : result.output_path || result.message || "No output details returned.";
+      return `${folderName}: ${outputFiles.length > 0 ? outputFiles.map(fileName).join(", ") : "cover made"}`;
+    }
 
-      return `<li class="result-list__item"><span>${escapeHtml(folderName)} — ${escapeHtml(status)} — ${escapeHtml(outputSummary)}</span></li>`;
-    })
-    .join("");
+    if ((result.pages_generated ?? 0) === 0) {
+      return `${folderName}: no sheets made. ${result.message || ""}`.trim();
+    }
 
-  return `
-    <section class="result-section">
-      <h4>Per-folder outcomes</h4>
-      <ul class="result-list">${listItems}</ul>
-    </section>
-  `;
+    const sheets = pluralize(result.pages_generated, "sheet");
+    if (result.video_created) {
+      return `${folderName}: ${sheets} and a video`;
+    }
+
+    return requestedPreviewVideo ? `${folderName}: ${sheets}, but no video. ${describeVideoProblem(result.message)}` : `${folderName}: ${sheets}`;
+  });
+
+  return renderListSection("Each bundle", lines, "", { limit: Infinity });
 }
 
-function renderBatchCoverCollageSummary(result) {
+function renderBatchSummary(result, kind) {
   const bundleResults = Array.isArray(result.bundle_results) ? result.bundle_results : [];
-  const successfulResults = bundleResults.filter((bundleResult) => bundleResult?.success);
-  const failedResults = bundleResults.filter((bundleResult) => !bundleResult?.success);
-  const outputFiles = successfulResults.flatMap((bundleResult) => Array.isArray(bundleResult.output_files) ? bundleResult.output_files : []);
-  const totalCollageFilesWritten = outputFiles.length;
-  const totalImages = successfulResults.reduce((sum, bundleResult) => sum + (bundleResult.total_images ?? 0), 0);
-  const outputRootPath = result.created_output_root_path || "";
+  const isCover = kind === "cover";
+  // A bundle counts as done when something was made for it.
+  const doneResults = bundleResults.filter((bundleResult) => bundleResult?.success && (isCover || (bundleResult.pages_generated ?? 0) > 0));
+  const doneCount = doneResults.length;
+  const totalCount = result.processed_folders ?? bundleResults.length;
+  const outputName = isCover ? "covers" : "preview sheets";
+  const requestedPreviewVideo = !isCover && Boolean(createPreviewVideoEl?.checked);
+  const sum = (field) => doneResults.reduce((total, bundleResult) => total + (bundleResult[field] ?? 0), 0);
+
+  let badgeLabel = "Done";
+  let message = `Made ${outputName} for ${pluralize(doneCount, "bundle")}.`;
+  if (doneCount === 0) {
+    badgeLabel = "Nothing made";
+    message = `Couldn't make ${outputName} for ${totalCount === 1 ? "the bundle" : `any of the ${totalCount} bundles`}.`;
+  } else if (doneCount < totalCount) {
+    badgeLabel = "Partly done";
+    message = `Made ${outputName} for ${doneCount} of ${pluralize(totalCount, "bundle")}.`;
+  }
 
   renderResultCard(generationResultEl, {
-    tone: failedResults.length === 0 ? "success" : successfulResults.length > 0 ? "warning" : "warning",
-    badgeLabel: failedResults.length === 0 ? "Completed" : successfulResults.length > 0 ? "Partial" : "Needs attention",
-    message: result.message || (failedResults.length === 0
-      ? `Built batch cover collages for ${pluralize(successfulResults.length, "folder")}.`
-      : `Built batch cover collages for ${successfulResults.length} of ${bundleResults.length} selected folders.`),
-    summaryRows: [
-      { label: "Selected folders processed", value: pluralize(result.processed_folders ?? bundleResults.length, "folder") },
-      { label: "Folders successfully generated", value: pluralize(result.generated_folders ?? successfulResults.length, "folder") },
-      { label: "Total collage files written", value: pluralize(totalCollageFilesWritten, "file") },
-      { label: "Selected folders", value: result.selected_folders === null || result.selected_folders === undefined ? null : pluralize(result.selected_folders, "folder") },
-      { label: "Detected folders", value: result.total_detected_folders === null || result.total_detected_folders === undefined ? null : pluralize(result.total_detected_folders, "folder") },
-      { label: "Images", value: pluralize(totalImages, "image") },
-    ],
+    tone: doneCount > 0 && doneCount === totalCount ? "success" : "warning",
+    badgeLabel,
+    message,
+    summaryRows: isCover
+      ? [
+        { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
+        { label: "Cover files", value: pluralize(doneResults.flatMap((bundleResult) => bundleResult.output_files ?? []).length, "file") },
+      ]
+      : [
+        { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
+        { label: "Sheets", value: pluralize(sum("pages_generated"), "sheet") },
+        { label: "Images used", value: pluralize(sum("total_images"), "image") },
+        { label: "Videos", value: requestedPreviewVideo ? pluralize(bundleResults.filter((bundleResult) => bundleResult.video_created).length, "video") : null },
+      ],
     sections: [
-      renderBatchFolderOutcomeSection(bundleResults),
-      renderPathSection("Created output root", outputRootPath),
+      renderBatchFolderOutcomeSection(bundleResults, kind),
+      renderPathSection("Saved in", result.created_output_root_path || "", "Copy the folder path"),
     ],
   });
 }
 
-function renderGenerationSummary(result) {
+function renderGenerationSummary(result, kind = "sheets") {
   if (Array.isArray(result.bundle_results)) {
-    renderBatchCoverCollageSummary(result);
+    renderBatchSummary(result, kind);
     return;
   }
 
   const outputFiles = Array.isArray(result.output_files) ? result.output_files : [];
   const pagesGenerated = result.pages_generated ?? 0;
   const totalImages = result.total_images ?? 0;
-  const processedFolders = result.processed_folders ?? null;
-  const selectedFolders = result.selected_folders ?? processedFolders;
-  const totalDetectedFolders = result.total_detected_folders ?? null;
-  const generatedFolders = result.generated_folders ?? null;
-  const outputPath = result.output_path || result.created_output_root_path || "";
-  const outputPathLabel = result.created_output_root_path ? "Created output root" : "Output path";
+  const outputPath = result.output_path || "";
+  const pageSizeRow = { label: "Page size", value: result.page_geometry || null };
+
+  if (kind === "cover") {
+    const coverMade = outputFiles.length > 0;
+    renderResultCard(generationResultEl, {
+      tone: coverMade ? "success" : "warning",
+      badgeLabel: coverMade ? "Done" : "Nothing made",
+      message: coverMade ? `Made a cover from ${pluralize(totalImages, "image")}.` : result.message || "No cover was made.",
+      summaryRows: [pageSizeRow],
+      sections: [
+        renderListSection("Files", outputFiles.map(fileName)),
+        renderPathSection("Saved in", outputPath, "Copy the folder path"),
+      ],
+    });
+    return;
+  }
+
   const videoFilePath = result.video_file || "";
   const requestedPreviewVideo = Boolean(createPreviewVideoEl?.checked);
-
-  let message = result.message || "Done.";
-  if (selectedFolders !== null && generatedFolders !== null) {
-    const detectedSummary = totalDetectedFolders === null ? "" : ` out of ${pluralize(totalDetectedFolders, "detected folder")}`;
-    message = `${message} Processed ${pluralize(selectedFolders, generationState.mode === "batch" ? "selected batch folder" : "selected folder")}${detectedSummary}; ${pluralize(generatedFolders, generationState.mode === "batch" ? "batch folder" : "folder")} generated pages.`;
-  }
-  if (requestedPreviewVideo && pagesGenerated <= 0) {
-    message = `${message} Preview video was requested, but no pages were generated, so a video could not be created.`;
+  const notes = [
+    describeLeftOutImages(result.images_dropped ?? 0),
+    result.images_skipped > 0 ? `Skipped ${pluralize(result.images_skipped, "file")} that couldn't be read.` : "",
+    result.backgrounds_cleaned > 0 ? `Cleaned the background on ${pluralize(result.backgrounds_cleaned, "image")}.` : "",
+  ];
+  if (requestedPreviewVideo && !videoFilePath) {
+    notes.push(pagesGenerated > 0 ? describeVideoProblem(result.message) : "With no sheets, there was nothing to put in a video.");
   }
 
   renderResultCard(generationResultEl, {
-    tone: pagesGenerated > 0 || outputFiles.length > 0 || outputPath ? "success" : "neutral",
-    badgeLabel: pagesGenerated > 0 ? "Completed" : "Finished",
-    message,
-    summaryRows: [
-      { label: "Pages", value: pluralize(pagesGenerated, "page") },
-      { label: "Images", value: pluralize(totalImages, "image") },
-      { label: "Detected folders", value: totalDetectedFolders === null ? null : pluralize(totalDetectedFolders, "folder") },
-      { label: "Selected folders", value: selectedFolders === null ? null : pluralize(selectedFolders, "folder") },
-      { label: "Generated folders", value: generatedFolders === null ? null : pluralize(generatedFolders, "folder") },
-      {
-        label: "Outputs",
-        value: outputFiles.length > 0 ? pluralize(outputFiles.length, "file") : outputPath ? "Saved path available" : "None",
-      },
-      { label: "Preview video", value: videoFilePath ? "Created" : requestedPreviewVideo ? "Not created" : "Not requested" },
-    ],
+    tone: pagesGenerated > 0 ? "success" : "warning",
+    badgeLabel: pagesGenerated > 0 ? "Done" : "Nothing made",
+    message: pagesGenerated > 0
+      ? `Made ${pluralize(pagesGenerated, "preview sheet")} from ${pluralize(totalImages, "image")}${videoFilePath ? ", plus a preview video" : ""}.`
+      : "No sheets were made.",
+    notes,
+    summaryRows: pagesGenerated > 0 ? [pageSizeRow] : [],
     sections: [
-      renderListSection("Output files", outputFiles),
-      renderPathSection("Preview video file", videoFilePath),
-      renderPathSection(outputPathLabel, outputPath),
+      renderListSection("Files", outputFiles.map(fileName)),
+      renderPathSection("Preview video", videoFilePath, "Copy the video path"),
+      pagesGenerated > 0 ? renderPathSection("Saved in", outputPath, "Copy the folder path") : "",
     ],
   });
 }
@@ -1201,17 +1342,39 @@ generationModeEls.forEach((modeEl) => {
     resetSingleFolderSelectionState();
     syncDerivedOutputPath();
     resetScanReadyState();
-    renderPendingResult(scanResultEl, "Ready", generationState.mode === "batch"
-      ? "Mode updated. Run a parent-folder scan to continue the batch workflow."
-      : "Mode updated. Run a new scan for the selected folder to continue.");
-    renderPendingResult(generationResultEl, "Waiting", "No output yet. Run a scan first, then completed files will appear here.");
+    renderPendingResult(scanResultEl, "Waiting", generationState.mode === "batch"
+      ? "Scan the folder of bundles to continue."
+      : "Scan the folder to continue.");
+    renderPendingResult(generationResultEl, "Waiting", "Nothing made yet. Your files will be listed here.");
     applyGenerationMode();
   });
 });
 
-themeToggleButton?.addEventListener("click", () => {
-  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  setTheme(nextTheme);
+backgroundCleanModeEl?.addEventListener("change", updateBackgroundCleanControls);
+
+// Paths are long and fiddly to select by hand.
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest?.(".copy-button");
+  if (!button) {
+    return;
+  }
+
+  const idleText = "Copy";
+  try {
+    await navigator.clipboard.writeText(button.dataset.copy || "");
+    button.textContent = "Copied!";
+  } catch {
+    // No clipboard on plain http:// other than localhost: select the path
+    // instead, ready to copy.
+    const pathEl = button.parentElement?.querySelector("code");
+    if (pathEl) {
+      window.getSelection()?.selectAllChildren(pathEl);
+    }
+    button.textContent = "Selected";
+  }
+  setTimeout(() => {
+    button.textContent = idleText;
+  }, 1800);
 });
 
 createPreviewVideoEl?.addEventListener("change", () => {
@@ -1232,7 +1395,7 @@ async function scanCurrentFolder({ preserveSubfolderPicker = false } = {}) {
   }
   resetBatchValidationState();
   resetScanReadyState();
-  renderPendingResult(scanResultEl, "Scanning", generationState.mode === "batch" ? "Scanning parent folder contents to discover folders for batch page and cover-collage generation..." : "Scanning folder contents...");
+  renderPendingResult(scanResultEl, "Scanning", generationState.mode === "batch" ? "Looking for bundle folders…" : "Counting images…");
 
   const { ok, data, errorMessage } = await postJson("/api/jobs/scan-folder", { folder_path: readMainInputFolderPath() });
   const result = ok ? data : buildFailedScanResult(errorMessage);
@@ -1247,7 +1410,11 @@ async function scanCurrentFolder({ preserveSubfolderPicker = false } = {}) {
   }
 
   if (Array.isArray(result.available_subfolders) && result.available_subfolders.length > 0) {
-    generationState.selectedBatchFolders = selectedBatchFolders;
+    // Making images for every bundle is the usual case, so a fresh list starts
+    // with all of them picked; a re-scan keeps the user's picks.
+    generationState.selectedBatchFolders = generationState.mode === "batch" && selectedBatchFolders.length === 0
+      ? result.available_subfolders.map(normalizeSubfolderOption).filter(Boolean).map(({ fullPath }) => fullPath)
+      : selectedBatchFolders;
     showSubfolderPicker(result.available_subfolders, selectedSubfolder);
   } else {
     clearSelectedWorkingFolder();
@@ -1260,8 +1427,71 @@ async function scanCurrentFolder({ preserveSubfolderPicker = false } = {}) {
 }
 
 scanButton?.addEventListener("click", async () => {
-  await runExclusive(() => scanCurrentFolder({ preserveSubfolderPicker: true }));
+  await runExclusive(async () => {
+    await scanCurrentFolder({ preserveSubfolderPicker: true });
+    // Check the picked bundles straight away, so making images for all the
+    // bundles in a folder takes one click.
+    if (generationState.mode === "batch" && hasSelectedBatchFolders()) {
+      await validateSelectedBatchFolders();
+    }
+  });
 });
+
+// The check card describes the picked bundles, so it follows the picks:
+// unticking the bundle that failed turns it ready without a new check.
+function renderBatchCheckSummary() {
+  const selectedPaths = getSelectedBatchFolderPaths();
+  if (selectedPaths.length === 0) {
+    renderPendingResult(scanResultEl, "Pick bundles", "Pick at least one bundle to check.");
+    return;
+  }
+
+  const selectedPathSet = new Set(selectedPaths);
+  const results = generationState.batchValidationResults.filter((result) => selectedPathSet.has(result.folderPath));
+  const readyResults = results.filter((result) => result.valid);
+  const invalidResults = results.filter((result) => !result.valid);
+  const uncheckedCount = selectedPaths.length - results.length;
+
+  let tone = "success";
+  let badgeLabel = "Ready";
+  let message = readyResults.length === 1 ? "The picked bundle is ready." : `All ${readyResults.length} picked bundles are ready.`;
+  if (invalidResults.length > 0) {
+    tone = "warning";
+    badgeLabel = "Needs attention";
+    message = `${invalidResults.length} of ${pluralize(selectedPaths.length, "picked bundle")} ${invalidResults.length === 1 ? "needs" : "need"} attention.`;
+  } else if (uncheckedCount > 0) {
+    tone = "neutral";
+    badgeLabel = "Not checked";
+    message = `${pluralize(uncheckedCount, "picked bundle")} ${uncheckedCount === 1 ? "hasn't" : "haven't"} been checked yet.`;
+  }
+
+  renderResultCard(scanResultEl, {
+    tone,
+    badgeLabel,
+    message,
+    notes: [invalidResults.length > 0 && invalidResults.length < selectedPaths.length
+      ? "Untick the ones that need attention to go ahead with the rest."
+      : ""],
+    summaryRows: [
+      { label: "Ready", value: pluralize(readyResults.length, "bundle") },
+      { label: "Images", value: pluralize(readyResults.reduce((sum, result) => sum + (result.image_count ?? 0), 0), "image") },
+      { label: "Full sheets", value: pluralize(readyResults.reduce((sum, result) => sum + (result.estimated_pages ?? 0), 0), "sheet") },
+    ],
+    sections: [
+      renderListSection(
+        "Ready",
+        readyResults.map((result) => `${result.displayName} (${pluralize(result.image_count ?? 0, "image")})`),
+        "None of them are ready yet.",
+      ),
+      renderListSection(
+        "Need attention",
+        invalidResults.map((result) => `${result.displayName}: ${result.message || "Not ready"}`),
+        "",
+        { limit: Infinity },
+      ),
+    ],
+  });
+}
 
 async function validateSelectedBatchFolders() {
   if (generationState.mode !== "batch") {
@@ -1270,18 +1500,18 @@ async function validateSelectedBatchFolders() {
 
   const selectedBatchFolders = getSelectedBatchFolderPaths();
   if (!generationState.batchParentScanComplete) {
-    renderPendingResult(scanResultEl, "Needs discovery", "Run the parent-folder scan before validating selected batch folders.");
+    renderPendingResult(scanResultEl, "Scan first", "Scan the folder of bundles first.");
     return [];
   }
 
   if (selectedBatchFolders.length === 0) {
     setBatchValidationResults([]);
     recomputeStepFiveState();
-    renderPendingResult(scanResultEl, "Needs selection", "Choose at least one detected child folder before running Scan selected folders.");
+    renderPendingResult(scanResultEl, "Pick bundles", "Pick at least one bundle to check.");
     return [];
   }
 
-  renderPendingResult(scanResultEl, "Scanning", `Scanning ${selectedBatchFolders.length} selected ${selectedBatchFolders.length === 1 ? "batch folder" : "batch folders"}...`);
+  renderPendingResult(scanResultEl, "Scanning", `Checking ${pluralize(selectedBatchFolders.length, "bundle")}…`);
 
   const results = await Promise.all(selectedBatchFolders.map(async (folderPath) => {
     const { ok, data, errorMessage } = await postJson("/api/jobs/scan-folder", { folder_path: folderPath });
@@ -1294,34 +1524,7 @@ async function validateSelectedBatchFolders() {
   }));
 
   setBatchValidationResults(results);
-  const invalidResults = results.filter((result) => !result.valid);
-  const totalImages = results.reduce((sum, result) => sum + (result.image_count ?? 0), 0);
-  const totalEstimatedPages = results.reduce((sum, result) => sum + (result.estimated_pages ?? 0), 0);
-
-  renderResultCard(scanResultEl, {
-    tone: invalidResults.length === 0 ? "success" : "warning",
-    badgeLabel: invalidResults.length === 0 ? "Validated" : "Needs attention",
-    message: invalidResults.length === 0
-      ? `Selected batch folders scanned successfully. Validated ${results.length} ${results.length === 1 ? "batch folder" : "batch folders"}. Batch page and cover-collage generation are ready.`
-      : `${invalidResults.length} of ${results.length} selected ${results.length === 1 ? "batch folder needs" : "batch folders need"} attention before generation.`,
-    summaryRows: [
-      { label: "Selected batch folders", value: pluralize(results.length, "folder") },
-      { label: "Validated batch folders", value: pluralize(generationState.validatedBatchFolders.length, "folder") },
-      { label: "Images", value: pluralize(totalImages, "image") },
-      { label: "Estimated pages", value: pluralize(totalEstimatedPages, "page") },
-    ],
-    sections: [
-      renderListSection(
-        "Validated folders",
-        results.filter((result) => result.valid).map((result) => `${result.displayName} (${result.image_count ?? 0} images)`),
-        "No selected batch folders validated successfully.",
-      ),
-      renderListSection(
-        "Folders needing attention",
-        invalidResults.map((result) => `${result.displayName}: ${result.message || "Not ready"}`),
-      ),
-    ],
-  });
+  renderBatchCheckSummary();
 
   recomputeStepFiveState();
   return results;
@@ -1340,31 +1543,35 @@ subfolderPickerEl?.addEventListener("change", () => {
 
 selectAllSubfoldersButton?.addEventListener("click", () => {
   setSelectedBatchFolders(generationState.availableSubfolders.map(({ fullPath }) => fullPath));
-  setBatchValidationResults([]);
+  applyBatchSelectionChange();
   syncBatchSelectionUI();
 });
 
 clearSubfolderSelectionButton?.addEventListener("click", () => {
   setSelectedBatchFolders([]);
-  setBatchValidationResults([]);
+  applyBatchSelectionChange();
   syncBatchSelectionUI();
 });
 
 useSubfolderButton?.addEventListener("click", async () => {
-  if (!subfolderPickerEl.value) {
+  if (!subfolderPickerEl.value || generationState.busy) {
     return;
   }
 
-  generationState.selectedWorkingFolder = subfolderPickerEl.value;
-  renderPendingResult(scanResultEl, "Ready", `Selected subfolder: ${subfolderPickerEl.selectedOptions?.[0]?.textContent?.trim() || subfolderPickerEl.value}.`);
-  setScanReadyState(generationState.singleFolderReady);
+  // Scan the chosen folder as if it had been typed in: the scan is what makes
+  // it ready, and the input then shows where the images come from.
+  inputFolderEl.value = subfolderPickerEl.value;
+  resetSingleFolderSelectionState();
+  syncDerivedOutputPath();
+  await runExclusive(() => scanCurrentFolder());
 });
 
 async function runCoverCollage() {
   const selectedTemplateLabel = readSelectedCoverCollageTemplateLabel();
 
   if (generationState.mode !== "batch") {
-    renderPendingResult(generationResultEl, "Working", `Building ${selectedTemplateLabel} cover collage...`);
+    renderPendingResult(generationResultEl, "Working", `Making a ${selectedTemplateLabel.toLowerCase()} cover…`);
+    revealResult(generationResultEl);
 
     const { ok, data: result, errorMessage } = await postJson("/api/jobs/generate-cover-collage", readCoverCollagePayload());
     if (!ok) {
@@ -1372,17 +1579,18 @@ async function runCoverCollage() {
       return;
     }
 
-    renderGenerationSummary(result);
+    renderGenerationSummary(result, "cover");
     return;
   }
 
   const payload = buildBatchCoverCollagePayload();
   if (payload.selected_subfolders.length === 0 || !hasValidatedBatchSelection()) {
-    renderPendingResult(generationResultEl, "Needs validation", "Select and validate one or more batch folders before running batch cover-collage generation.");
+    renderPendingResult(generationResultEl, "Check bundles", "Check the picked bundles before making covers.");
     return;
   }
 
-  renderPendingResult(generationResultEl, "Working", `Running ${selectedTemplateLabel} batch cover-collage generation for ${payload.selected_subfolders.length} selected ${payload.selected_subfolders.length === 1 ? "batch folder" : "batch folders"}...`);
+  renderPendingResult(generationResultEl, "Working", `Making ${selectedTemplateLabel.toLowerCase()} covers for ${pluralize(payload.selected_subfolders.length, "bundle")}…`);
+  revealResult(generationResultEl);
 
   const { ok, data: batchResult, errorMessage } = await postJson("/api/jobs/generate-cover-collage-batch", payload);
   if (!ok) {
@@ -1390,7 +1598,7 @@ async function runCoverCollage() {
     return;
   }
 
-  renderGenerationSummary(batchResult);
+  renderGenerationSummary(batchResult, "cover");
 }
 
 coverCollageButton?.addEventListener("click", async () => {
@@ -1417,19 +1625,19 @@ generateButton?.addEventListener("click", async () => {
   if (generationState.mode === "batch") {
     const { availableCount, selectedCount } = getBatchGenerationSelectionDetails();
     if (availableCount === 0) {
-      renderPendingResult(generationResultEl, "Needs scan", "Run a parent-folder scan that finds at least one detected child folder before starting batch page or cover-collage generation.");
+      renderPendingResult(generationResultEl, "Scan first", "Scan a folder that has bundle folders inside.");
       updateBatchSelectionStatus();
       return;
     }
 
     if (selectedCount === 0) {
-      renderPendingResult(generationResultEl, "Needs selection", "No batch folders selected. Choose at least one detected child folder before running Scan selected folders.");
+      renderPendingResult(generationResultEl, "Pick bundles", "Pick at least one bundle, then check it.");
       updateBatchSelectionStatus();
       return;
     }
 
     if (!generationState.batchValidationReady || !hasValidatedBatchSelection()) {
-      renderPendingResult(generationResultEl, "Needs validation", "Run Scan selected folders successfully for the current batch selection before running batch page or cover-collage generation.");
+      renderPendingResult(generationResultEl, "Check bundles", "Check the picked bundles before making images.");
       updateBatchSelectionStatus();
       return;
     }
@@ -1441,6 +1649,7 @@ generateButton?.addEventListener("click", async () => {
 async function runPageGeneration() {
   const config = getSelectedGenerationModeConfig();
   renderPendingResult(generationResultEl, "Working", getGenerationStatusMessage());
+  revealResult(generationResultEl);
 
   const { ok, data: result, errorMessage } = await postJson(config.endpoint, config.payload());
   if (!ok) {
@@ -1448,11 +1657,11 @@ async function runPageGeneration() {
     return;
   }
 
-  renderGenerationSummary(result);
+  renderGenerationSummary(result, "sheets");
 }
 
-restoreTheme();
 updatePreviewVideoControls();
+updateBackgroundCleanControls();
 hideSubfolderPicker();
 applyGenerationMode();
 syncDerivedOutputPath();
