@@ -7,6 +7,8 @@ All notable changes to Pasteup are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-16
+
 ### Added
 - **Browse…** beside the folder field opens a folder browser, so a folder can be
   picked instead of typed. It opens at the folder in the field, or at your home
@@ -52,5 +54,6 @@ The first release on PyPI.
   already running and moves to a free port when another program has 8000.
   `pasteup --shortcut` makes a double-click launcher.
 
-[Unreleased]: https://github.com/ftymoshchuk/pasteup/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ftymoshchuk/pasteup/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ftymoshchuk/pasteup/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ftymoshchuk/pasteup/releases/tag/v0.1.0
