@@ -280,9 +280,6 @@ Used by the UI in **Many bundles** mode. Iterates bundle folders under a parent 
 5. **Your files** lists what was made and where it was saved; **Copy** puts a
    path on the clipboard.
 
-The **Chalkboard** button switches to a dark theme, and the choice is
-remembered. Until you pick one, the page follows your system setting.
-
 ---
 
 ## Known Constraints

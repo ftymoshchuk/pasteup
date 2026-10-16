@@ -1,4 +1,3 @@
-const THEME_STORAGE_KEY = "pasteup-theme";
 // Matches IMAGES_PER_PAGE in services/image_batcher.py: a sheet is a 4 x 3 grid.
 const IMAGES_PER_SHEET = 12;
 const PART_FILLED_OPTION = "“Include a part-filled last page”";
@@ -67,7 +66,6 @@ const generateButton = document.getElementById("generate-button");
 const coverCollageButton = document.getElementById("cover-collage-button");
 const outputActionsSectionEl = document.getElementById("output-actions-section");
 const outputActionsHintEl = document.getElementById("output-actions-hint");
-const themeToggleButton = document.getElementById("theme-toggle");
 const scanResultEl = document.getElementById("scan-result");
 const generationResultEl = document.getElementById("generation-result");
 const subfolderSectionEl = document.getElementById("subfolder-picker-section");
@@ -83,7 +81,6 @@ const batchSelectionSummaryEl = document.getElementById("batch-selection-summary
 const batchSelectionStatusEl = document.getElementById("batch-selection-status");
 const videoSettingsEl = document.getElementById("video-settings");
 const backgroundCleanSettingsEl = document.getElementById("background-clean-settings");
-const themeToggleLabelEl = themeToggleButton?.querySelector(".theme-toggle__label");
 
 const generationState = {
   mode: document.querySelector('input[name="generation-mode"]:checked')?.value || "single",
@@ -888,30 +885,6 @@ function applyGenerationMode() {
   recomputeStepFiveState();
 }
 
-function setTheme(theme, { remember = true } = {}) {
-  const resolvedTheme = theme === "dark" ? "dark" : "light";
-  document.documentElement.dataset.theme = resolvedTheme;
-  if (remember) {
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, resolvedTheme);
-    } catch {
-      // Storage can be off (private windows); the choice then lasts this visit.
-    }
-  }
-
-  const nextThemeName = resolvedTheme === "dark" ? "Paper" : "Chalkboard";
-  if (themeToggleLabelEl) {
-    themeToggleLabelEl.textContent = nextThemeName;
-  }
-  themeToggleButton.setAttribute("aria-label", `Switch to the ${nextThemeName.toLowerCase()} theme`);
-}
-
-function restoreTheme() {
-  // The script in <head> already applied the saved or the system theme; only
-  // sync the button, and do not save, so an unchosen theme keeps following the system.
-  setTheme(document.documentElement.dataset.theme, { remember: false });
-}
-
 function resetScanReadyState() {
   generationState.singleFolderReady = false;
   if (generationState.mode === "batch") {
@@ -1379,11 +1352,6 @@ generationModeEls.forEach((modeEl) => {
 
 backgroundCleanModeEl?.addEventListener("change", updateBackgroundCleanControls);
 
-themeToggleButton?.addEventListener("click", () => {
-  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  setTheme(nextTheme);
-});
-
 // Paths are long and fiddly to select by hand.
 document.addEventListener("click", async (event) => {
   const button = event.target.closest?.(".copy-button");
@@ -1692,7 +1660,6 @@ async function runPageGeneration() {
   renderGenerationSummary(result, "sheets");
 }
 
-restoreTheme();
 updatePreviewVideoControls();
 updateBackgroundCleanControls();
 hideSubfolderPicker();
