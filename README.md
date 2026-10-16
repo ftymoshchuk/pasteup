@@ -37,6 +37,21 @@ it without installing anything: `uvx pasteup`.
 For changes not released yet, install from GitHub instead:
 `pipx install git+https://github.com/ftymoshchuk/pasteup.git`.
 
+### No pipx yet?
+Install pipx once (or uv, which needs nothing else), then open a new terminal
+window so the command is found:
+
+- **macOS:** `brew install pipx`, then `pipx ensurepath`. Without
+  [Homebrew](https://brew.sh), install uv instead:
+  `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **Windows:** `py -m pip install --user pipx`, then `py -m pipx ensurepath`.
+  Or install uv from PowerShell:
+  `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+- **Linux:** `sudo apt install pipx` (Debian, Ubuntu) or `sudo dnf install pipx`
+  (Fedora), then `pipx ensurepath`.
+
+Then run `pipx install pasteup`, or `uv tool install pasteup` if you chose uv.
+
 ## Run
 ```bash
 pasteup
@@ -256,6 +271,7 @@ and the response message gives ffmpeg's error.
 - `output_files` (list[str]): generated file paths
 - `output_path` (str): normalized output folder path
 - `images_dropped` (int): trailing images left out because they did not fill a page
+- `images_skipped` (int): files that could not be read as images
 - `backgrounds_cleaned` (int): images whose background was cleaned
 - `page_geometry` (str): resolved page size, e.g. `3000x2400px (10.00x8.00in at 300 DPI)`
 - `video_file` (str | null), `video_created` (bool): the preview video, when requested
@@ -288,10 +304,70 @@ Used by the UI in **Many bundles** mode. Iterates bundle folders under a parent 
 - `bundle_results` (list): per-folder generation summaries
 - `message` (str): batch generation summary
 
+### `POST /api/jobs/generate-cover-collage`
+Makes one cover image for a folder: its images arranged in one of three layouts.
+
+**Request body**
+```json
+{
+  "folder_path": "/path/to/images",
+  "output_path": "/path/to/output",
+  "page_width": 3000,
+  "page_height": 3000,
+  "format": "JPG",
+  "collage_template": "randomized-grid",
+  "selected_cover_images": ["cover001.jpg", "cover002.png"]
+}
+```
+- `collage_template` (`randomized-grid` | `feature-spread` | `center-stage`,
+  default `randomized-grid`): the layout.
+- `image_fit` (`cover` | `contain`, default `cover`): `cover` fills each tile
+  and crops the overflow; `contain` fits the whole image and leaves margins.
+- `selected_cover_images` (list of file names, optional): use only these files.
+  Names must match exactly, extension included; when none of them match, the
+  request fails and says so.
+- The output quality fields above apply too.
+
+**Response fields**
+- `success` (bool)
+- `total_images` (int): images in the collage
+- `pages_generated` (int)
+- `output_files` (list[str]): the cover's file path
+- `output_path` (str)
+- `page_geometry` (str): resolved page size
+- `message` (str)
+
+### `POST /api/jobs/generate-cover-collage-batch`
+Makes one cover per bundle folder, as `/generate-all-folders` does for sheets.
+
+**Request body**
+```json
+{
+  "parent_folder_path": "/path/to/parent-folder",
+  "created_output_root_path": "/path/to/created-output-root",
+  "selected_subfolders": ["/path/to/parent-folder/bundle-a", "/path/to/parent-folder/bundle-b"],
+  "page_width": 3000,
+  "page_height": 3000,
+  "format": "JPG",
+  "collage_template": "feature-spread"
+}
+```
+`collage_template`, `image_fit` and the output quality fields work as for
+`/generate-cover-collage`.
+
+**Response fields**
+- `success` (bool)
+- `created_output_root_path` (str)
+- `processed_folders`, `selected_folders`, `total_detected_folders`,
+  `generated_folders` (int): as for `/generate-all-folders`
+- `bundle_results` (list): per bundle, `folder_name`, `success`,
+  `pages_generated`, `total_images`, `output_path`, `output_files` and `message`
+- `message` (str)
+
 ---
 
 ## Using the app
-1. Run `pasteup` and open `http://127.0.0.1:8000/`.
+1. Run `pasteup`; it opens in your browser.
 2. **Pick your clip art.** Choose **One bundle** (a folder of images) or **Many
    bundles** (a folder with one folder inside per bundle), enter the folder and
    click **Scan folder**. Results go in a `---Created---` folder next to it.
@@ -327,23 +403,13 @@ Used by the UI in **Many bundles** mode. Iterates bundle folders under a parent 
 
 ---
 
-## Acceptance Checklist (MVP Scope)
-- [ ] App runs locally with FastAPI and serves UI.
-- [ ] Folder scan validates path and reports supported image count.
-- [ ] Supported file types: JPG/JPEG/PNG/WEBP.
-- [ ] Estimated pages computed using fixed 12 images/page.
-- [ ] Generation creates fixed 4x3 grids with centered, aspect-preserving fit.
-- [ ] Transparent PNGs composite onto white rather than black.
-- [ ] Exports carry DPI metadata so the page has a real physical size.
-- [ ] Background cleaning only touches near-white areas connected to the border.
-- [ ] Output exports as PNG or JPG.
-- [ ] Exports use sequential naming (`page_###`) and avoid overwriting existing files.
-- [ ] API returns clear success/error messages for scan and generation.
-- [ ] UI supports end-to-end flow: input paths → scan → generate.
-
----
-
 ## Troubleshooting
+
+### `pasteup` runs an old version
+An earlier `pip install` of Pasteup can come first on your PATH. List every
+copy with `type -a pasteup` (macOS, Linux) or `where pasteup` (Windows), and
+remove the old one with `pip uninstall pasteup` in the environment it belongs
+to. `pasteup --version` then shows the version pipx or uv installed.
 
 ### Transparent PNGs used to come out with a black background
 Fixed. Transparent areas are composited onto the page's white rather than having
