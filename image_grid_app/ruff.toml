@@ -1,0 +1,7 @@
+# Pyflakes plus pycodestyle's error classes: real bugs such as undefined names
+# and unused imports, without a formatting pass over existing code. Widening the
+# rule set, or adding `ruff format --check`, is a separate decision (#138).
+target-version = "py311"
+
+[lint]
+select = ["E4", "E7", "E9", "F"]

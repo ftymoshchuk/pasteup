@@ -1,0 +1,47 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is the floor: mullion and the app's StrEnum use need it.
+        python-version: ["3.11", "3.13"]
+    defaults:
+      run:
+        working-directory: image_grid_app
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: image_grid_app/requirements*.txt
+
+      # The preview-video tests encode real files; without ffmpeg they skip.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # Lint first: a slip fails in seconds rather than after the suite.
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        run: pytest -rs

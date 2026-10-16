@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Grid App</title>
+    <link rel="stylesheet" href="/static/css/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell page-layout">
+      <section class="shell-window" aria-label="Image Grid App terminal window">
+        <div class="shell-chrome">
+          <div class="shell-chrome__controls" aria-hidden="true">
+            <span class="shell-chrome__dot shell-chrome__dot--warn"></span>
+            <span class="shell-chrome__dot shell-chrome__dot--ok"></span>
+            <span class="shell-chrome__dot shell-chrome__dot--live"></span>
+          </div>
+          <p class="shell-chrome__title">image-grid-app :: operator console</p>
+          <button id="theme-toggle" class="theme-toggle secondary-button terminal-button" type="button" aria-pressed="true" aria-label="Current theme: terminal dark. Activate to switch to soft light." title="Theme: terminal dark">
+            Switch to soft light
+          </button>
+        </div>
+
+        <header class="page-header shell-section shell-section--hero">
+          <div class="page-header__content">
+            <p class="app-kicker">Terminal session</p>
+            <h1>Image Grid App</h1>
+            <p id="mode-help" class="muted-text">Single folder is best when you already know exactly which image folder you want to process.</p>
+          </div>
+        </header>
+
+        <section class="shell-section section-card workflow-card">
+          <div class="section-heading">
+            <div>
+              <p class="section-eyebrow">Workflow</p>
+              <h2>Run through this workflow</h2>
+            </div>
+            <p class="muted-text">Pick a mode, enter your folders, run a scan, then choose page generation or cover-collage output based on the scan results and selected folders.</p>
+          </div>
+
+          <div class="workflow-steps">
+            <section class="workflow-step">
+              <div class="workflow-step__heading">
+                <p class="section-eyebrow">Step 1</p>
+                <h3>Select a run mode</h3>
+              </div>
+              <p id="mode-step-copy" class="muted-text">Choose Single folder for one image set, or Batch folders to process each image folder inside a parent directory.</p>
+              <fieldset class="mode-toggle" aria-label="Generation mode">
+                <legend class="sr-only">Generation mode</legend>
+                <label class="mode-option">
+                  <input id="mode-single" type="radio" name="generation-mode" value="single" checked />
+                  <span class="mode-option__flag">--single</span><span class="mode-option__text">Single folder</span>
+                </label>
+                <label class="mode-option">
+                  <input id="mode-batch" type="radio" name="generation-mode" value="batch" />
+                  <span class="mode-option__flag">--batch</span><span class="mode-option__text">Batch folders</span>
+                </label>
+              </fieldset>
+            </section>
+
+            <section class="workflow-step">
+              <div class="workflow-step__heading">
+                <p class="section-eyebrow">Step 2</p>
+                <h3>Set folders</h3>
+              </div>
+              <p id="folder-step-copy" class="muted-text">Enter the folder to inspect and the folder where completed output should be saved.</p>
+              <div class="form-grid">
+                <label>
+                  <span id="input-folder-label">Input folder</span>
+                  <input id="input-folder" type="text" value="{{ defaults.input_folder }}" placeholder="e.g. ~/Pictures/clip-art/bundle-01" />
+                </label>
+
+                <label>
+                  <span id="output-folder-label">Output folder</span>
+                  <input id="output-folder" type="text" value="{{ defaults.output_folder }}" readonly aria-readonly="true" />
+                </label>
+              </div>
+            </section>
+
+            <section class="workflow-step workflow-step--primary">
+              <div class="workflow-step__heading">
+                <p class="section-eyebrow">Step 3</p>
+                <h3>Run folder scan</h3>
+              </div>
+              <p class="muted-text">Run a scan first to confirm the folder is ready and to detect any subfolders before creating output.</p>
+              <div class="button-row button-row--split">
+                <button id="scan-button" class="primary-button terminal-button" type="button">Run folder scan</button>
+                <p class="button-row__hint muted-text">Start here: run the scan before using any output actions.</p>
+              </div>
+            </section>
+
+            <section id="subfolder-picker-section" class="workflow-step workflow-step--secondary hidden" hidden>
+              <div class="workflow-step__heading">
+                <p class="section-eyebrow">Step 4</p>
+                <h3>Review detected child folders</h3>
+              </div>
+              <p class="muted-text">Single mode keeps one quick picker for cover-collage work. Batch mode reveals eligible child folders from the scanned parent so you can choose a selected subset, then run batch page generation or batch cover-collage generation for those validated folders.</p>
+
+              <div id="subfolder-single-controls" class="subfolder-control-panel">
+                <div class="subfolder-picker-row">
+                  <label>
+                    <span>Detected child folders in the scanned parent</span>
+                    <select id="subfolder-picker"></select>
+                  </label>
+                  <button id="use-subfolder-button" class="secondary-button terminal-button" type="button">Use selected folder</button>
+                </div>
+              </div>
+
+              <div id="subfolder-batch-controls" class="subfolder-control-panel hidden" hidden>
+                <div class="subfolder-picker-row subfolder-picker-row--stacked">
+                  <fieldset>
+                    <legend>Detected child folders for batch mode</legend>
+                    <p class="muted-text">Select one or more detected child folders. The selected-folder count updates immediately as you change the checklist.</p>
+                    <div id="batch-subfolder-checklist" class="subfolder-checklist" role="group" aria-live="polite"></div>
+                  </fieldset>
+                  <div class="button-row batch-subfolder-actions">
+                    <button id="select-all-subfolders-button" class="secondary-button terminal-button" type="button">Select all</button>
+                    <button id="clear-subfolder-selection-button" class="secondary-button terminal-button" type="button">Clear selection</button>
+                  </div>
+                </div>
+                <p id="batch-selection-summary" class="muted-text subfolder-selection-summary">Run the parent-folder scan to discover child folders for this batch.</p>
+                <p id="batch-selection-status" class="muted-text subfolder-selection-status" role="status" aria-live="polite">Run the parent-folder scan, choose folders, then use Scan selected folders to validate the batch before page or cover-collage generation.</p>
+                <div class="button-row button-row--split">
+                  <button id="batch-scan-button" class="primary-button terminal-button" type="button">Scan selected folders</button>
+                  <p class="button-row__hint muted-text">Batch mode only: validate the selected detected folders independently from the parent-folder discovery scan.</p>
+                </div>
+              </div>
+            </section>
+
+            <section id="output-actions-section" class="workflow-step workflow-step--secondary workflow-step--disabled" aria-labelledby="output-actions-heading">
+              <div class="workflow-step__heading">
+                <p class="section-eyebrow">Step 5</p>
+                <h3 id="output-actions-heading">Run output actions</h3>
+              </div>
+              <p id="output-step-copy" class="muted-text">After a successful scan, run page generation or cover-collage generation for the current folder. In batch mode, scan the parent folder, validate the selected folders, then run batch page generation or batch cover-collage generation for those folders.</p>
+              <div class="section-stack">
+                <div class="form-grid settings-grid">
+                  <label>
+                    <span>Width</span>
+                    <input id="page-width" type="number" value="{{ defaults.page_width }}" min="1" />
+                  </label>
+                  <label>
+                    <span>Height</span>
+                    <input id="page-height" type="number" value="{{ defaults.page_height }}" min="1" />
+                  </label>
+                  <label>
+                    <span>Gap</span>
+                    <input id="gap" type="number" value="{{ defaults.gap }}" min="0" />
+                  </label>
+                  <label>
+                    <span>Margin</span>
+                    <input id="margin" type="number" value="{{ defaults.margin }}" min="0" />
+                  </label>
+                  <label>
+                    <span>Format</span>
+                    <select id="format">
+                      <option value="JPG" {% if defaults.format == "JPG" %}selected{% endif %}>JPG</option>
+                      <option value="PNG" {% if defaults.format == "PNG" %}selected{% endif %}>PNG</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Units</span>
+                    <select id="page-unit">
+                      <option value="px" {% if defaults.page_unit == "px" %}selected{% endif %}>px</option>
+                      <option value="in" {% if defaults.page_unit == "in" %}selected{% endif %}>inches</option>
+                      <option value="mm" {% if defaults.page_unit == "mm" %}selected{% endif %}>mm</option>
+                    </select>
+                    <small class="field-help muted-text">Width and height are read in this unit and converted to pixels at the DPI below.</small>
+                  </label>
+                  <label>
+                    <span>DPI</span>
+                    <input id="dpi" type="number" value="{{ defaults.dpi }}" min="1" max="1200" step="1" />
+                    <small class="field-help muted-text">Stamped into the exported file. 300 is the usual print resolution; without it a page is read as 72 DPI.</small>
+                  </label>
+                  <label>
+                    <span>Clean white background</span>
+                    <select id="background-clean-mode">
+                      <option value="off" selected>off</option>
+                      <option value="flatten">flatten to white</option>
+                      <option value="transparent">make transparent</option>
+                    </select>
+                    <small class="field-help muted-text">Cleans only near-white areas connected to the image border, so light detail inside the subject is left alone.</small>
+                  </label>
+                  <label>
+                    <span>Background tolerance</span>
+                    <input id="background-tolerance" type="number" value="240" min="0" max="255" step="1" />
+                    <small class="field-help muted-text">Lowest channel value treated as background. Lower catches more; too low eats the subject.</small>
+                  </label>
+                  <label>
+                    <span>Edge feather</span>
+                    <input id="background-feather" type="number" value="1" min="0" max="25" step="1" />
+                    <small class="field-help muted-text">Softens the mask edge to remove grey halos around cut-out subjects.</small>
+                  </label>
+                  <label>
+                    <span>Include partial page</span>
+                    <input id="include-partial-page" type="checkbox" />
+                    <small class="field-help muted-text">Render a final page even when it is not completely filled. Off leaves trailing images out and reports how many.</small>
+                  </label>
+                  <label>
+                    <span>Create preview video</span>
+                    <input id="create-preview-video" type="checkbox" />
+                    <small id="create-preview-video-help" class="field-help muted-text">Enable this, then click <strong>Generate pages</strong>. Video creation runs as part of page generation.</small>
+                  </label>
+                  <label>
+                    <span>Duration (seconds)</span>
+                    <input id="video-duration-seconds" type="number" value="15" min="1" max="120" step="1" />
+                  </label>
+                  <label>
+                    <span>Transition</span>
+                    <select id="video-transition">
+                      <option value="none">none</option>
+                      <option value="crossfade">crossfade</option>
+                      <option value="flip">flip</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="button-row action-row">
+                  <button id="generate-button" class="secondary-button terminal-button" type="button" disabled>Generate pages for selected batch folders</button>
+                  <label>
+                    <span>Cover collage template</span>
+                    <select id="cover-collage-template">
+                      {% for template in cover_collage_templates %}
+                      <option value="{{ template.value }}">{{ template.label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Cover collage include list</span>
+                    <textarea id="cover-collage-include-list" rows="3" placeholder="Optional. Enter exact image filenames, one per line or comma-separated, for example: cover001.jpg&#10;cover002.png"></textarea>
+                  </label>
+                  <button id="cover-collage-button" class="secondary-button terminal-button" type="button" disabled>Build cover collages for selected batch folders</button>
+                </div>
+                <p id="output-actions-hint" class="muted-text">Output actions stay disabled until the scan confirms the selected folder is ready. In batch mode, scan the parent folder, choose the folders to include, validate them, then run batch page generation or batch cover-collage generation.</p>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="shell-section section-card shell-section--status">
+          <div class="section-heading">
+            <div>
+              <p class="section-eyebrow">Status</p>
+              <h2>Review latest command output</h2>
+            </div>
+            <p class="muted-text">See what the scan found and where generated files were written.</p>
+          </div>
+
+          <div class="results-grid">
+            <section class="result-panel" aria-labelledby="scan-result-heading">
+              <h3 id="scan-result-heading">Scan report</h3>
+              <div id="scan-result" class="result-card" role="status" aria-live="polite">
+                <div class="result-card__header">
+                  <span class="result-badge result-badge--neutral">Ready</span>
+                  <p class="result-message">Waiting for input. Select a mode, set folders, then run a scan.</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="result-panel" aria-labelledby="generation-result-heading">
+              <h3 id="generation-result-heading">Output log</h3>
+              <div id="generation-result" class="result-card" role="status" aria-live="polite">
+                <div class="result-card__header">
+                  <span class="result-badge result-badge--neutral">Waiting</span>
+                  <p class="result-message">No output yet. Run a scan first, then completed files will appear here.</p>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="/static/js/app.js"></script>
+  </body>
+</html>
