@@ -3,6 +3,7 @@ from typing import Literal
 
 from mullion import DEFAULT_TOLERANCE, BackgroundCleanMode
 from pasteup.services.cover_collage import CoverCollageFittingMode, CoverCollageTemplate
+from pasteup.services.upscaler import UPSCALE_FACTORS
 from mullion import DEFAULT_DPI
 
 from pydantic import AliasChoices, BaseModel, Field, field_validator
@@ -333,6 +334,82 @@ class BatchCoverCollageGenerationResponse(BaseModel):
     total_detected_folders: int
     selected_folders: int
     bundle_results: list[BatchCoverCollageResult]
+    created_output_root_path: str
+    message: str
+
+
+class UpscaleOptions(BaseModel):
+    """How much bigger, and the resolution to stamp; shared by both upscale requests."""
+
+    scale: int = Field(default=2, description="How many times bigger each side becomes: 2, 3 or 4.")
+    dpi: int = Field(default=DEFAULT_DPI, gt=0, le=1200, description="Resolution stamped into the files.")
+
+    @field_validator("scale")
+    @classmethod
+    def validate_scale(cls, value: int) -> int:
+        if value not in UPSCALE_FACTORS:
+            raise ValueError(f"scale must be one of {', '.join(map(str, UPSCALE_FACTORS))}.")
+        return value
+
+
+class UpscaleRequest(UpscaleOptions):
+    folder_path: str
+    output_path: str = Field(description="The bundle's output folder; an Upscaled folder is made inside it.")
+
+
+class UpscaleResponse(BaseModel):
+    success: bool
+    scale: int
+    total_images: int = Field(description="Images upscaled, each saved as PNG and as JPG.")
+    output_path: str = Field(description="The Upscaled folder, with a PNG and a JPG folder inside.")
+    png_folder: str
+    jpg_folder: str
+    output_files: list[str]
+    images_skipped: int = Field(default=0, description="Files that could not be read as images.")
+    too_large_files: list[str] = Field(
+        default_factory=list, description="Images left out because upscaled they would pass 100 megapixels."
+    )
+    same_name_files: list[str] = Field(
+        default_factory=list,
+        description="Files left out because an image of the same name in another format gave both formats.",
+    )
+    message: str
+
+
+class BatchUpscaleRequest(UpscaleOptions):
+    parent_folder_path: str
+    created_output_root_path: str = Field(
+        validation_alias=AliasChoices("created_output_root_path", "output_root_path"),
+    )
+    selected_subfolders: list[str] = Field(
+        validation_alias=AliasChoices("selected_subfolders", "selected_subfolder_paths"),
+    )
+
+    @field_validator("selected_subfolders", mode="before")
+    @classmethod
+    def normalize_selected_subfolders(cls, value: object) -> list[str] | None:
+        return _normalize_optional_string_list(value, field_name="selected_subfolders")
+
+
+class BatchUpscaleResult(BaseModel):
+    folder_name: str
+    success: bool
+    total_images: int
+    output_path: str
+    images_skipped: int = 0
+    too_large_files: list[str] = Field(default_factory=list)
+    same_name_files: list[str] = Field(default_factory=list)
+    message: str
+
+
+class BatchUpscaleResponse(BaseModel):
+    success: bool
+    scale: int
+    processed_folders: int
+    generated_folders: int
+    total_detected_folders: int
+    selected_folders: int
+    bundle_results: list[BatchUpscaleResult]
     created_output_root_path: str
     message: str
 

@@ -16,8 +16,8 @@ const GENERATION_MODES = {
     helpText: "Point Pasteup at the folder that holds one bundle's images.",
     modeStepCopy: "Counts your images and checks they can be read.",
     folderStepCopy: "Results go in a ---Created--- folder next to it.",
-    outputStepCopy: "Preview sheets of every image, or one cover for the listing.",
-    outputHintReady: "Ready! Make preview sheets, a cover, or both.",
+    outputStepCopy: "Preview sheets of every image, a cover for the listing, or upscaled copies of the images.",
+    outputHintReady: "Ready! Make preview sheets, a cover or upscaled images.",
   },
   batch: {
     inputLabel: "Folder of bundles",
@@ -29,7 +29,7 @@ const GENERATION_MODES = {
     helpText: "Point Pasteup at a folder with one folder inside per bundle.",
     modeStepCopy: "Lists the bundle folders inside and checks each one.",
     folderStepCopy: "Each bundle gets its own folder inside a ---Created--- folder next to it.",
-    outputStepCopy: "Preview sheets or a cover for every bundle you checked.",
+    outputStepCopy: "Preview sheets, a cover or upscaled images for every bundle you checked.",
     outputHintReady: "Ready! Make images for the checked bundles.",
   },
 };
@@ -61,9 +61,12 @@ const backgroundToleranceEl = document.getElementById("background-tolerance");
 const backgroundFeatherEl = document.getElementById("background-feather");
 const includePartialPageEl = document.getElementById("include-partial-page");
 
+const upscaleScaleEl = document.getElementById("upscale-scale");
+
 const scanButton = document.getElementById("scan-button");
 const generateButton = document.getElementById("generate-button");
 const coverCollageButton = document.getElementById("cover-collage-button");
+const upscaleButton = document.getElementById("upscale-button");
 const outputActionsSectionEl = document.getElementById("output-actions-section");
 const outputActionsHintEl = document.getElementById("output-actions-hint");
 const scanResultEl = document.getElementById("scan-result");
@@ -259,14 +262,22 @@ function validateVideoGenerationSettings() {
   return true;
 }
 
-function validateOutputQualitySettings() {
-  const quality = readOutputQualitySettings();
-
-  if (!Number.isFinite(quality.dpi) || quality.dpi <= 0 || quality.dpi > 1200) {
+function validateDpiSetting() {
+  const { dpi } = readOutputQualitySettings();
+  if (!Number.isFinite(dpi) || dpi <= 0 || dpi > 1200) {
     reportSettingsProblem("DPI must be between 1 and 1200.", dpiEl);
     return false;
   }
 
+  return true;
+}
+
+function validateOutputQualitySettings() {
+  if (!validateDpiSetting()) {
+    return false;
+  }
+
+  const quality = readOutputQualitySettings();
   if (quality.background_clean_mode === "off") {
     return true;
   }
@@ -465,6 +476,30 @@ function buildBatchCoverCollagePayload() {
     format: commonSettings.format,
     collage_template: readSelectedCoverCollageTemplate(),
     ...readOutputQualitySettings(),
+  };
+}
+
+function readUpscaleScale() {
+  return Number(upscaleScaleEl?.value) || 2;
+}
+
+// Upscaling uses only the DPI from step 2: the images keep their own shape.
+function readUpscalePayload() {
+  return {
+    folder_path: readWorkingFolderPath(),
+    output_path: outputFolderEl.value.trim(),
+    scale: readUpscaleScale(),
+    dpi: readOutputQualitySettings().dpi,
+  };
+}
+
+function buildBatchUpscalePayload() {
+  return {
+    parent_folder_path: inputFolderEl.value.trim(),
+    created_output_root_path: outputFolderEl.value.trim(),
+    selected_subfolders: getSelectedBatchFolderPaths(),
+    scale: readUpscaleScale(),
+    dpi: readOutputQualitySettings().dpi,
   };
 }
 
@@ -704,6 +739,13 @@ function getCoverCollageButtonLabel() {
   return selectedCount === 1 ? "Make cover for 1 bundle" : `Make covers for ${selectedCount} bundles`;
 }
 
+function getUpscaleButtonLabel() {
+  const { selectedCount } = getBatchGenerationSelectionDetails();
+  return generationState.mode === "batch" && selectedCount > 0
+    ? `Upscale ${pluralize(selectedCount, "bundle")}`
+    : "Upscale images";
+}
+
 function getGenerationStatusMessage() {
   if (generationState.mode !== "batch") {
     return getSelectedGenerationModeConfig().statusMessage;
@@ -762,10 +804,15 @@ function updateOutputActionState() {
     ? generationReady || coverCollageReady
     : generationState.singleFolderReady;
 
+  // Ready on the same terms as a cover: it too takes every image as it is.
+  const upscaleReady = coverCollageReady;
+
   generateButton.textContent = getGenerationButtonLabel();
   coverCollageButton.textContent = getCoverCollageButtonLabel();
+  upscaleButton.textContent = getUpscaleButtonLabel();
   generateButton.disabled = !generationReady || generationState.busy;
   coverCollageButton.disabled = !coverCollageReady || generationState.busy;
+  upscaleButton.disabled = !upscaleReady || generationState.busy;
   [scanButton, batchScanButton, browseFolderButton].forEach((button) => {
     if (button) {
       button.disabled = generationState.busy;
@@ -775,6 +822,8 @@ function updateOutputActionState() {
   generateButton.classList.toggle("secondary-button", !generationReady);
   coverCollageButton.classList.toggle("primary-button", coverCollageReady);
   coverCollageButton.classList.toggle("secondary-button", !coverCollageReady);
+  upscaleButton.classList.toggle("primary-button", upscaleReady);
+  upscaleButton.classList.toggle("secondary-button", !upscaleReady);
   outputActionsSectionEl.classList.toggle("workflow-step--disabled", !outputActionsEnabled);
   outputActionsHintEl.textContent = getOutputActionsHint();
   updateBatchSelectionStatus();
@@ -1189,12 +1238,12 @@ function describeVideoProblem(message) {
   return start >= 0 ? message.slice(start) : "The preview video couldn't be made.";
 }
 
-function renderBatchFolderOutcomeSection(results, kind) {
+function renderBatchFolderOutcomeSection(results, kind, scale) {
   if (!Array.isArray(results) || results.length === 0) {
     return "";
   }
 
-  const requestedPreviewVideo = kind !== "cover" && Boolean(createPreviewVideoEl?.checked);
+  const requestedPreviewVideo = kind === "sheets" && Boolean(createPreviewVideoEl?.checked);
   const lines = results.map((result) => {
     const folderName = result.folder_name || result.displayName || fileName(result.output_path || "") || "Bundle";
     if (!result.success) {
@@ -1204,6 +1253,17 @@ function renderBatchFolderOutcomeSection(results, kind) {
     if (kind === "cover") {
       const outputFiles = Array.isArray(result.output_files) ? result.output_files : [];
       return `${folderName}: ${outputFiles.length > 0 ? outputFiles.map(fileName).join(", ") : "cover made"}`;
+    }
+
+    if (kind === "upscale") {
+      // An image missing from the upscaled set is worth a mention; one left
+      // out for its name is not, as its twin gave both formats.
+      const tooLargeCount = Array.isArray(result.too_large_files) ? result.too_large_files.length : 0;
+      return [
+        `${folderName}: ${pluralize(result.total_images ?? 0, "image")} upscaled`,
+        tooLargeCount > 0 ? `${tooLargeCount} too big to upscale ${scale}x` : "",
+        result.images_skipped > 0 ? `${pluralize(result.images_skipped, "file")} unreadable` : "",
+      ].filter(Boolean).join(", ");
     }
 
     if ((result.pages_generated ?? 0) === 0) {
@@ -1224,13 +1284,36 @@ function renderBatchFolderOutcomeSection(results, kind) {
 function renderBatchSummary(result, kind) {
   const bundleResults = Array.isArray(result.bundle_results) ? result.bundle_results : [];
   const isCover = kind === "cover";
+  const isUpscale = kind === "upscale";
   // A bundle counts as done when something was made for it.
-  const doneResults = bundleResults.filter((bundleResult) => bundleResult?.success && (isCover || (bundleResult.pages_generated ?? 0) > 0));
+  const doneResults = bundleResults.filter((bundleResult) => (isUpscale
+    ? bundleResult?.success && (bundleResult.total_images ?? 0) > 0
+    : bundleResult?.success && (isCover || (bundleResult.pages_generated ?? 0) > 0)));
   const doneCount = doneResults.length;
   const totalCount = result.processed_folders ?? bundleResults.length;
-  const outputName = isCover ? "covers" : "preview sheets";
-  const requestedPreviewVideo = !isCover && Boolean(createPreviewVideoEl?.checked);
+  const outputName = { cover: "covers", upscale: "upscaled images" }[kind] || "preview sheets";
+  const requestedPreviewVideo = kind === "sheets" && Boolean(createPreviewVideoEl?.checked);
   const sum = (field) => doneResults.reduce((total, bundleResult) => total + (bundleResult[field] ?? 0), 0);
+
+  let summaryRows;
+  if (isCover) {
+    summaryRows = [
+      { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
+      { label: "Cover files", value: pluralize(doneResults.flatMap((bundleResult) => bundleResult.output_files ?? []).length, "file") },
+    ];
+  } else if (isUpscale) {
+    summaryRows = [
+      { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
+      { label: "Images upscaled", value: pluralize(sum("total_images"), "image") },
+    ];
+  } else {
+    summaryRows = [
+      { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
+      { label: "Sheets", value: pluralize(sum("pages_generated"), "sheet") },
+      { label: "Images used", value: pluralize(sum("total_images"), "image") },
+      { label: "Videos", value: requestedPreviewVideo ? pluralize(bundleResults.filter((bundleResult) => bundleResult.video_created).length, "video") : null },
+    ];
+  }
 
   let badgeLabel = "Done";
   let message = `Made ${outputName} for ${pluralize(doneCount, "bundle")}.`;
@@ -1246,27 +1329,71 @@ function renderBatchSummary(result, kind) {
     tone: doneCount > 0 && doneCount === totalCount ? "success" : "warning",
     badgeLabel,
     message,
-    summaryRows: isCover
-      ? [
-        { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
-        { label: "Cover files", value: pluralize(doneResults.flatMap((bundleResult) => bundleResult.output_files ?? []).length, "file") },
-      ]
-      : [
-        { label: "Bundles done", value: `${doneCount} of ${totalCount}` },
-        { label: "Sheets", value: pluralize(sum("pages_generated"), "sheet") },
-        { label: "Images used", value: pluralize(sum("total_images"), "image") },
-        { label: "Videos", value: requestedPreviewVideo ? pluralize(bundleResults.filter((bundleResult) => bundleResult.video_created).length, "video") : null },
-      ],
+    summaryRows,
     sections: [
-      renderBatchFolderOutcomeSection(bundleResults, kind),
+      renderBatchFolderOutcomeSection(bundleResults, kind, result.scale),
       renderPathSection("Saved in", result.created_output_root_path || "", "Copy the folder path"),
     ],
+  });
+}
+
+// Matches MAX_UPSCALED_MEGAPIXELS in services/upscaler.py.
+const MAX_UPSCALED_MEGAPIXELS = 100;
+
+function describeTooLargeToUpscale(names, scale) {
+  if (names.length === 0) {
+    return "";
+  }
+
+  const advice = scale > 2 ? "Try a smaller size." : "They're big enough already.";
+  return names.length === 1
+    ? `${names[0]} would pass ${MAX_UPSCALED_MEGAPIXELS} megapixels at ${scale}x, so it was left out. ${advice}`
+    : `${names.length} images would pass ${MAX_UPSCALED_MEGAPIXELS} megapixels at ${scale}x, so they were left out: ${names.join(", ")}. ${advice}`;
+}
+
+function describeSameNameFiles(names) {
+  if (names.length === 0) {
+    return "";
+  }
+
+  return names.length === 1
+    ? `${names[0]} was left out: an image with the same name in another format gave both the PNG and the JPG.`
+    : `${names.length} files were left out because an image with the same name in another format gave both the PNG and the JPG: ${names.join(", ")}.`;
+}
+
+function renderUpscaleSummary(result) {
+  const imageCount = result.total_images ?? 0;
+  const tooLarge = Array.isArray(result.too_large_files) ? result.too_large_files : [];
+  const sameName = Array.isArray(result.same_name_files) ? result.same_name_files : [];
+
+  renderResultCard(generationResultEl, {
+    tone: imageCount > 0 ? "success" : "warning",
+    badgeLabel: imageCount > 0 ? "Done" : "Nothing made",
+    message: imageCount > 0
+      ? `Upscaled ${pluralize(imageCount, "image")} ${result.scale}x, each as a PNG and a JPG.`
+      : "No images were upscaled.",
+    notes: [
+      result.images_skipped > 0 ? `Skipped ${pluralize(result.images_skipped, "file")} that couldn't be read.` : "",
+      describeTooLargeToUpscale(tooLarge, result.scale),
+      describeSameNameFiles(sameName),
+    ],
+    sections: imageCount > 0
+      ? [
+        renderPathSection("PNG files", result.png_folder, "Copy the PNG folder path"),
+        renderPathSection("JPG files", result.jpg_folder, "Copy the JPG folder path"),
+      ]
+      : [],
   });
 }
 
 function renderGenerationSummary(result, kind = "sheets") {
   if (Array.isArray(result.bundle_results)) {
     renderBatchSummary(result, kind);
+    return;
+  }
+
+  if (kind === "upscale") {
+    renderUpscaleSummary(result);
     return;
   }
 
@@ -1826,6 +1953,49 @@ coverCollageButton?.addEventListener("click", async () => {
   }
 
   await runExclusive(runCoverCollage);
+});
+
+async function runUpscale() {
+  const scale = readUpscaleScale();
+
+  if (generationState.mode !== "batch") {
+    renderPendingResult(generationResultEl, "Working", `Upscaling every image ${scale}x…`);
+    revealResult(generationResultEl);
+
+    const { ok, data: result, errorMessage } = await postJson("/api/jobs/upscale-images", readUpscalePayload());
+    if (!ok) {
+      renderFailedResult(generationResultEl, errorMessage);
+      return;
+    }
+
+    renderGenerationSummary(result, "upscale");
+    return;
+  }
+
+  const payload = buildBatchUpscalePayload();
+  if (payload.selected_subfolders.length === 0 || !hasValidatedBatchSelection()) {
+    renderPendingResult(generationResultEl, "Check bundles", "Check the picked bundles before upscaling.");
+    return;
+  }
+
+  renderPendingResult(generationResultEl, "Working", `Upscaling images ${scale}x for ${pluralize(payload.selected_subfolders.length, "bundle")}…`);
+  revealResult(generationResultEl);
+
+  const { ok, data: batchResult, errorMessage } = await postJson("/api/jobs/upscale-images-batch", payload);
+  if (!ok) {
+    renderFailedResult(generationResultEl, errorMessage);
+    return;
+  }
+
+  renderGenerationSummary(batchResult, "upscale");
+}
+
+upscaleButton?.addEventListener("click", async () => {
+  if (upscaleButton.disabled || !validateDpiSetting()) {
+    return;
+  }
+
+  await runExclusive(runUpscale);
 });
 
 generateButton?.addEventListener("click", async () => {

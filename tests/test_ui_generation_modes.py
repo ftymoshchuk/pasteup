@@ -98,10 +98,31 @@ def test_app_js_browses_through_the_api_and_scans_the_folder_chosen() -> None:
     assert "[scanButton, batchScanButton, browseFolderButton].forEach((button) => {" in script
 
 
+def test_index_offers_upscaling_as_an_output_of_its_own() -> None:
+    html = INDEX_TEMPLATE.read_text()
+    normalized = _squash_whitespace(html)
+    select = html[html.index('<select id="upscale-scale"') : html.index("</select>", html.index('<select id="upscale-scale"'))]
+
+    assert [f'<option value="{scale}"' in select for scale in (2, 3, 4)] == [True, True, True]
+    assert 'button id="upscale-button" class="secondary-button" type="button" disabled>Upscale images</button>' in normalized
+
+
+def test_app_js_upscales_one_bundle_or_many() -> None:
+    script = APP_JS.read_text()
+
+    assert 'postJson("/api/jobs/upscale-images", readUpscalePayload())' in script
+    assert 'postJson("/api/jobs/upscale-images-batch", payload)' in script
+    assert script.count('renderGenerationSummary(result, "upscale");') == 1
+    assert script.count('renderGenerationSummary(batchResult, "upscale");') == 1
+    # Unlocked on the same terms as a cover, and locked while a job runs.
+    assert "const upscaleReady = coverCollageReady;" in script
+    assert "upscaleButton.disabled = !upscaleReady || generationState.busy;" in script
+
+
 def test_app_js_renders_batch_cover_collage_results_per_folder() -> None:
     script = APP_JS.read_text()
 
-    assert 'function renderBatchFolderOutcomeSection(results, kind) {' in script
+    assert 'function renderBatchFolderOutcomeSection(results, kind, scale) {' in script
     assert 'function renderBatchSummary(result, kind) {' in script
     assert 'if (Array.isArray(result.bundle_results)) {' in script
     assert '{ label: "Bundles done", value: `${doneCount} of ${totalCount}` },' in script
@@ -133,9 +154,11 @@ def test_app_js_routes_every_request_through_the_error_aware_helper() -> None:
     assert script.count("fetch(") == 1
     assert "if (response.ok && data) {" in script
     assert "typeof data?.detail === \"string\"" in script
-    assert script.count("renderFailedResult(generationResultEl, errorMessage);") == 3
+    # Sheets, one cover, covers for many bundles, and upscaling one or many.
+    assert script.count("renderFailedResult(generationResultEl, errorMessage);") == 5
     assert "await runExclusive(runPageGeneration);" in script
     assert "await runExclusive(runCoverCollage);" in script
+    assert "await runExclusive(runUpscale);" in script
 
 
 def test_app_js_reads_and_resets_manual_cover_collage_include_list() -> None:

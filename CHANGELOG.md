@@ -13,6 +13,10 @@ All notable changes to Pasteup are recorded here. The format follows
   folder, says how many images the folder you're in holds, and scans the one
   you choose. Typing or pasting a path still works.
   (`POST /api/jobs/browse-folder`)
+- Upscaled images, from a tile of their own in step 3: every image of a bundle,
+  or of each picked bundle, made 2x, 3x or 4x bigger and saved in an
+  `Upscaled` folder as a PNG, which keeps any transparency, and a JPG on
+  white. (`POST /api/jobs/upscale-images`, `POST /api/jobs/upscale-images-batch`)
 
 ### Fixed
 - Hidden files are no longer counted as images. A Mac writes a hidden `._`

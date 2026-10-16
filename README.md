@@ -14,6 +14,8 @@ publishing: cut out by hand and pasted onto a layout board.
   main image.
 - **Preview video:** an MP4 slideshow of the sheets, exactly as long as you ask
   (Etsy's listing videos run 5 to 15 s).
+- **Upscaled images:** every image made 2x, 3x or 4x bigger, saved in an
+  `Upscaled` folder as a PNG, which keeps any transparency, and a JPG on white.
 - **Clean-up:** transparent PNGs land on white instead of black, phone photos
   are turned upright, and near-white backgrounds can be removed.
 - **Batch mode:** process every bundle folder under a parent folder in one go.
@@ -156,6 +158,7 @@ Default UI values:
 - `background_tolerance`: `240`
 - `background_feather`: `1`
 - `include_partial_page`: `false`
+- upscaling `scale`: `2` (also `3` or `4`)
 
 Behavior defaults:
 - Scan sample size: first `5` files (`sample_files`) in sorted order.
@@ -399,6 +402,70 @@ Makes one cover per bundle folder, as `/generate-all-folders` does for sheets.
   `pages_generated`, `total_images`, `output_path`, `output_files` and `message`
 - `message` (str)
 
+### `POST /api/jobs/upscale-images`
+Makes every image of a folder bigger, saving each as a PNG and as a JPG in an
+`Upscaled` folder inside `output_path`: `Upscaled/PNG/<name>.png` and
+`Upscaled/JPG/<name>.jpg`. The PNG keeps any transparency; the JPG is
+flattened onto white. Images are resampled with Lanczos, which keeps edges
+smooth but adds no detail.
+
+**Request body**
+```json
+{
+  "folder_path": "/path/to/images",
+  "output_path": "/path/to/output",
+  "scale": 2,
+  "dpi": 300
+}
+```
+- `scale` (`2` | `3` | `4`, default `2`): how many times bigger each side becomes.
+- `dpi` (int, 1-1200, default `300`): stamped into every file.
+- Each file keeps its image's name, so upscaling again replaces what the last
+  run made.
+- Files sharing a name in different formats, such as `art.png` and `art.jpg`,
+  would be saved over each other, so one gives both formats: PNG first, then
+  WebP, then JPG.
+- Upscaled images are capped at 100 megapixels; an image that would pass that
+  is left out and named in the response.
+
+**Response fields**
+- `success` (bool): whether any image was upscaled
+- `scale` (int)
+- `total_images` (int): images upscaled
+- `output_path` (str): the `Upscaled` folder
+- `png_folder`, `jpg_folder` (str): the two folders inside it
+- `output_files` (list[str]): every file written
+- `images_skipped` (int): files that could not be read as images
+- `too_large_files` (list[str]): images left out for passing the cap
+- `same_name_files` (list[str]): files left out for sharing a name with the
+  image that was used
+- `message` (str)
+
+### `POST /api/jobs/upscale-images-batch`
+Upscales each selected bundle into `<created_output_root_path>/<bundle>/Upscaled`.
+
+**Request body**
+```json
+{
+  "parent_folder_path": "/path/to/parent-folder",
+  "created_output_root_path": "/path/to/created-output-root",
+  "selected_subfolders": ["/path/to/parent-folder/bundle-a", "/path/to/parent-folder/bundle-b"],
+  "scale": 4,
+  "dpi": 300
+}
+```
+
+**Response fields**
+- `success` (bool)
+- `created_output_root_path` (str)
+- `processed_folders`, `selected_folders`, `total_detected_folders`,
+  `generated_folders` (int): as for `/generate-all-folders`
+- `scale` (int)
+- `bundle_results` (list): per bundle, `folder_name`, `success`,
+  `total_images`, `output_path`, `images_skipped`, `too_large_files`,
+  `same_name_files` and `message`
+- `message` (str)
+
 ---
 
 ## Using the app
@@ -415,8 +482,8 @@ Makes one cover per bundle folder, as `/generate-all-folders` does for sheets.
      Untick any you want to skip. A bundle that fails its check can be unticked,
      or fixed and checked again with **Check selected bundles**.
 3. **Set up the page.** Size, units, DPI and format apply to sheets and covers
-   alike. **Clean up white backgrounds** can make near-white backgrounds pure
-   white or transparent.
+   alike, and DPI to upscaled images too. **Clean up white backgrounds** can
+   make near-white backgrounds pure white or transparent.
 4. **Make your images.**
    - **Preview sheets:** every image, 12 to a page (`POST /api/jobs/generate`,
      or `POST /api/jobs/generate-all-folders` for many bundles), optionally with a
@@ -425,6 +492,10 @@ Makes one cover per bundle folder, as `/generate-all-folders` does for sheets.
      (`POST /api/jobs/generate-cover-collage`, or
      `POST /api/jobs/generate-cover-collage-batch`). **Only use certain images**
      limits it to the files you name.
+   - **Upscaled images:** every image 2x, 3x or 4x bigger, as a PNG and a JPG
+     in an `Upscaled` folder (`POST /api/jobs/upscale-images`, or
+     `POST /api/jobs/upscale-images-batch`). It runs on its own, with no
+     sheets or cover needed.
 5. **Your files** lists what was made and where it was saved; **Copy** puts a
    path on the clipboard.
 
@@ -437,6 +508,9 @@ Makes one cover per bundle folder, as `/generate-all-folders` does for sheets.
 - Trailing images that do not fill a complete page are left out by default; the
   response reports how many. Set `include_partial_page: true` to render that final
   page with its unused cells left white.
+- Upscaling resamples each image: edges stay smooth, but no detail is added,
+  so at 4x clip art looks soft. AI upscalers can invent detail; Pasteup has
+  none built in.
 
 ---
 

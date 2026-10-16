@@ -15,6 +15,9 @@ from pasteup.models.schemas import (
     BatchCoverCollageResult,
     BatchGenerationRequest,
     BatchGenerationResponse,
+    BatchUpscaleRequest,
+    BatchUpscaleResponse,
+    BatchUpscaleResult,
     BrowseFolderRequest,
     BrowseFolderResponse,
     CoverCollageGenerationRequest,
@@ -26,6 +29,8 @@ from pasteup.models.schemas import (
     SelectedBatchFolderScanResult,
     SelectedBatchFolderValidationRequest,
     SelectedBatchFolderValidationResponse,
+    UpscaleRequest,
+    UpscaleResponse,
 )
 from pasteup.services.cover_collage import compose_cover_collage
 from mullion import DEFAULT_TOLERANCE, BackgroundCleanMode
@@ -44,6 +49,7 @@ from pasteup.services.folder_scanner import (
     scan_folder,
 )
 from pasteup.services.grid_composer import compose_image_grids
+from pasteup.services.upscaler import UPSCALED_FOLDER_NAME, upscale_images
 from pasteup.services.video_exporter import build_preview_video
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -380,6 +386,132 @@ def generate_all_folders_job(payload: BatchGenerationRequest) -> BatchGeneration
     )
 
 
+@router.post("/upscale-images", response_model=UpscaleResponse)
+def upscale_images_job(payload: UpscaleRequest) -> UpscaleResponse:
+    try:
+        return _upscale_single_folder(
+            folder_path=payload.folder_path,
+            output_path=payload.output_path,
+            scale=payload.scale,
+            dpi=payload.dpi,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/upscale-images-batch", response_model=BatchUpscaleResponse)
+def upscale_images_batch_job(payload: BatchUpscaleRequest) -> BatchUpscaleResponse:
+    parent_folder = resolve_folder_path(payload.parent_folder_path)
+    created_root = Path(payload.created_output_root_path).expanduser()
+
+    if not parent_folder.exists() or not parent_folder.is_dir():
+        raise HTTPException(status_code=400, detail=f"Invalid parent folder: {parent_folder}")
+
+    discovered_bundle_folders = _list_detected_bundle_folders(
+        parent_folder=parent_folder,
+        created_root_name=created_root.name,
+    )
+    bundle_folders = _resolve_selected_bundle_folders(
+        parent_folder=parent_folder,
+        selected_subfolders=payload.selected_subfolders,
+        bundle_folder_lookup={str(path): path for path in discovered_bundle_folders},
+    )
+
+    bundle_results = [
+        _upscale_batch_result(
+            bundle_folder=bundle_folder,
+            created_root=created_root,
+            scale=payload.scale,
+            dpi=payload.dpi,
+        )
+        for bundle_folder in bundle_folders
+    ]
+    generated_folders = sum(1 for result in bundle_results if result.total_images > 0)
+
+    return BatchUpscaleResponse(
+        success=True,
+        scale=payload.scale,
+        processed_folders=len(bundle_folders),
+        generated_folders=generated_folders,
+        total_detected_folders=len(discovered_bundle_folders),
+        selected_folders=len(bundle_folders),
+        bundle_results=bundle_results,
+        created_output_root_path=str(created_root),
+        message=(
+            f"Detected {len(discovered_bundle_folders)} eligible folder(s) under the parent. "
+            f"Processed {len(bundle_folders)} selected folder(s). "
+            f"Upscaled images for {generated_folders} folder(s)."
+        ),
+    )
+
+
+def _upscale_single_folder(*, folder_path: str, output_path: str, scale: int, dpi: int) -> UpscaleResponse:
+    """Upscale one folder's images into ``output_path``/Upscaled.
+
+    Raises ValueError, with a message for the user, when there is nothing to
+    upscale or the files can't be saved.
+    """
+    try:
+        scan_result = scan_folder(folder_path)
+        if not scan_result["valid"]:
+            raise ValueError(str(scan_result["message"]))
+        image_paths = list_supported_image_paths(resolve_folder_path(folder_path))
+    except OSError as exc:
+        raise ValueError(f"Unable to access folder: {exc}") from exc
+
+    try:
+        summary = upscale_images(
+            image_paths,
+            Path(output_path).expanduser() / UPSCALED_FOLDER_NAME,
+            scale=scale,
+            dpi=dpi,
+        )
+    except OSError as exc:
+        raise ValueError(f"Couldn't save the upscaled images: {exc}") from exc
+
+    return UpscaleResponse(
+        success=bool(summary.upscaled),
+        scale=scale,
+        total_images=len(summary.upscaled),
+        output_path=str(summary.output_dir),
+        png_folder=str(summary.png_dir),
+        jpg_folder=str(summary.jpg_dir),
+        output_files=summary.output_files,
+        images_skipped=len(summary.unreadable),
+        too_large_files=summary.too_large,
+        same_name_files=summary.same_name,
+        message=summary.user_message,
+    )
+
+
+def _upscale_batch_result(*, bundle_folder: Path, created_root: Path, scale: int, dpi: int) -> BatchUpscaleResult:
+    bundle_output = _build_batch_bundle_output_path(created_root=created_root, bundle_folder=bundle_folder)
+    try:
+        response = _upscale_single_folder(
+            folder_path=str(bundle_folder),
+            output_path=str(bundle_output),
+            scale=scale,
+            dpi=dpi,
+        )
+    except ValueError as exc:
+        return BatchUpscaleResult(
+            folder_name=bundle_folder.name,
+            success=False,
+            total_images=0,
+            output_path=str(bundle_output / UPSCALED_FOLDER_NAME),
+            message=str(exc),
+        )
+
+    return BatchUpscaleResult(
+        folder_name=bundle_folder.name,
+        success=response.success,
+        total_images=response.total_images,
+        output_path=response.output_path,
+        images_skipped=response.images_skipped,
+        too_large_files=response.too_large_files,
+        same_name_files=response.same_name_files,
+        message=response.message,
+    )
 
 
 def _generate_cover_collage_batch_result(
