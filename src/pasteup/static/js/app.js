@@ -1,4 +1,4 @@
-const THEME_STORAGE_KEY = "image-grid-theme";
+const THEME_STORAGE_KEY = "pasteup-theme";
 const GENERATION_MODES = {
   single: {
     inputLabel: "Input folder",

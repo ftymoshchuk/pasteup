@@ -10,7 +10,7 @@ from mullion import DEFAULT_DPI
 # Prefills the input-folder field so a regular workflow does not need retyping on
 # every launch. It is read from the environment rather than written here because
 # any real value is somebody's home directory.
-INPUT_FOLDER_ENV_VAR = "IMAGE_GRID_INPUT_FOLDER"
+INPUT_FOLDER_ENV_VAR = "PASTEUP_INPUT_FOLDER"
 
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).resolve().parents[1] / "templates")

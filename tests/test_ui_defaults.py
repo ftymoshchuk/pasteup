@@ -32,3 +32,10 @@ def test_index_prefills_the_input_folder_from_the_environment(monkeypatch) -> No
 def test_static_assets_are_served_from_the_installed_package() -> None:
     assert client.get("/static/js/app.js").status_code == 200
     assert client.get("/static/css/styles.css").status_code == 200
+
+
+def test_index_is_titled_pasteup() -> None:
+    html = client.get("/").text
+
+    assert "<title>Pasteup</title>" in html
+    assert "<h1>Pasteup</h1>" in html
