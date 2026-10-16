@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pasteup"
+dynamic = ["version"]
+description = "Turn a folder of clip art into listing images: preview sheets, cover collages and preview videos."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+# Compatible-release pins: bug-fix releases flow in, while anything that may
+# change behaviour (a new minor of a 0.x package, a new major elsewhere) is a
+# deliberate bump. mullion is pre-1.0, so its minor is pinned too.
+dependencies = [
+    "fastapi~=0.143.2",
+    "uvicorn~=0.54.0",
+    "jinja2~=3.1",
+    "pillow~=12.3",
+    "pydantic~=2.14",
+    "mullion~=0.2.1",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: FastAPI",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest~=9.1",
+    # starlette.testclient uses httpx2; plain httpx is deprecated there.
+    "httpx2~=2.13",
+    "ruff==0.17.1",
+]
+
+[project.scripts]
+pasteup = "pasteup.cli:main"
+
+[project.urls]
+Source = "https://github.com/ftymoshchuk/pasteup"
+
+[tool.hatch.version]
+path = "src/pasteup/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pasteup"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Pyflakes plus pycodestyle's error classes: real bugs such as undefined names
+# and unused imports, without a formatting pass over existing code. Widening the
+# rule set, or adding `ruff format --check`, is a separate decision.
+select = ["E4", "E7", "E9", "F"]

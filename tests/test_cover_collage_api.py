@@ -5,9 +5,9 @@ from PIL import Image
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from app.models.schemas import CoverCollageGenerationRequest
-from app.routes import jobs
-from app.routes.jobs import generate_cover_collage_job
+from pasteup.models.schemas import CoverCollageGenerationRequest
+from pasteup.routes import jobs
+from pasteup.routes.jobs import generate_cover_collage_job
 
 
 def _create_image(path: Path, color: tuple[int, int, int]) -> None:

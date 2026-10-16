@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
-from app.services.cover_collage import COVER_COLLAGE_TEMPLATE_OPTIONS
+from pasteup.services.cover_collage import COVER_COLLAGE_TEMPLATE_OPTIONS
 from mullion import DEFAULT_DPI
 
 # Prefills the input-folder field so a regular workflow does not need retyping on

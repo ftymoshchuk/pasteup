@@ -2,7 +2,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from app.routes import jobs
+from pasteup.routes import jobs
 
 
 def _create_image(path: Path) -> None:
@@ -21,7 +21,7 @@ def test_generate_single_folder_reports_video_output_path_when_created(
         _create_image(input_dir / f"img_{index:03}.png")
 
     expected_video_path = str((output_dir / "preview.mp4").resolve())
-    monkeypatch.setattr("app.routes.jobs.build_preview_video", lambda **_: expected_video_path)
+    monkeypatch.setattr("pasteup.routes.jobs.build_preview_video", lambda **_: expected_video_path)
 
     result = jobs._generate_for_single_folder(
         folder_path=str(input_dir),
@@ -54,7 +54,7 @@ def test_generate_single_folder_reports_video_failure_with_expected_path(
         _create_image(input_dir / f"img_{index:03}.png")
 
     monkeypatch.setattr(
-        "app.routes.jobs.build_preview_video",
+        "pasteup.routes.jobs.build_preview_video",
         lambda **_: (_ for _ in ()).throw(RuntimeError("ffmpeg unavailable")),
     )
 

@@ -1,4 +1,4 @@
-from app.services.image_batcher import build_image_batches, estimate_page_count
+from pasteup.services.image_batcher import build_image_batches, estimate_page_count
 
 
 def test_build_image_batches_returns_only_full_12_image_pages() -> None:

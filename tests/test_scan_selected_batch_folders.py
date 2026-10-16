@@ -4,8 +4,8 @@ from PIL import Image
 import pytest
 from fastapi import HTTPException
 
-from app.models.schemas import SelectedBatchFolderValidationRequest
-from app.routes.jobs import scan_selected_batch_folders_job
+from pasteup.models.schemas import SelectedBatchFolderValidationRequest
+from pasteup.routes.jobs import scan_selected_batch_folders_job
 
 
 def _create_image(path: Path) -> None:

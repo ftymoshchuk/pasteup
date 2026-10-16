@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from app.services import video_exporter
-from app.services.video_exporter import (
+from pasteup.services import video_exporter
+from pasteup.services.video_exporter import (
     FRAME_RATE,
     MAX_TRANSITION_SECONDS,
     MAX_VIDEO_SIDE,
@@ -79,14 +79,14 @@ def test_build_preview_video_sorts_paths_before_encoding(
     _create_image(page_1, "red")
     _create_image(page_2, "blue")
 
-    monkeypatch.setattr("app.services.video_exporter.shutil.which", lambda _: "/usr/bin/ffmpeg")
+    monkeypatch.setattr("pasteup.services.video_exporter.shutil.which", lambda _: "/usr/bin/ffmpeg")
 
     captured: dict[str, list[str]] = {}
 
     def _fake_run(command: list[str], check: bool, capture_output: bool, text: bool) -> None:
         captured["command"] = command
 
-    monkeypatch.setattr("app.services.video_exporter.subprocess.run", _fake_run)
+    monkeypatch.setattr("pasteup.services.video_exporter.subprocess.run", _fake_run)
 
     output = build_preview_video(
         [str(page_2), str(page_1)],
@@ -178,7 +178,7 @@ def test_encoding_failure_reports_ffmpegs_own_error(tmp_path: Path, monkeypatch:
 
 
 def test_an_unreadable_page_is_reported_not_raised_raw(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.services.video_exporter.shutil.which", lambda _: "/usr/bin/ffmpeg")
+    monkeypatch.setattr("pasteup.services.video_exporter.shutil.which", lambda _: "/usr/bin/ffmpeg")
     broken_page = tmp_path / "page_001.png"
     broken_page.write_bytes(b"not a png")
 

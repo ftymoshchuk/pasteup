@@ -2,8 +2,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from app.models.schemas import BatchGenerationRequest, GenerationRequest
-from app.routes.jobs import generate_all_folders_job
+from pasteup.models.schemas import BatchGenerationRequest, GenerationRequest
+from pasteup.routes.jobs import generate_all_folders_job
 
 
 def _create_image(path: Path) -> None:

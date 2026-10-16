@@ -4,7 +4,7 @@ import random
 import pytest
 from PIL import Image
 
-from app.services.cover_collage import (
+from pasteup.services.cover_collage import (
     COVER_COLLAGE_TEMPLATE_OPTIONS,
     CoverCollageFittingMode,
     CoverCollageTemplate,

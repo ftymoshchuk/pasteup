@@ -11,8 +11,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from app.main import app
-from app.services.grid_composer import CELLS_PER_PAGE, compose_image_grids
+from pasteup.main import app
+from pasteup.services.grid_composer import CELLS_PER_PAGE, compose_image_grids
 
 client = TestClient(app)
 

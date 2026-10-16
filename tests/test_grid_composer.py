@@ -2,7 +2,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from app.services.grid_composer import compose_image_grids
+from pasteup.services.grid_composer import compose_image_grids
 
 
 def _create_image(path: Path) -> None:

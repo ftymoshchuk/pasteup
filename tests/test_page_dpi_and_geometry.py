@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from app.services.exporter import export_pages
+from pasteup.services.exporter import export_pages
 
 
 def _round_dpi(image: Image.Image) -> tuple[int, int]:

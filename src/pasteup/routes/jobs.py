@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
-from app.models.schemas import (
+from pasteup.models.schemas import (
     BatchBundleResult,
     BatchCoverCollageGenerationRequest,
     BatchCoverCollageGenerationResponse,
@@ -24,22 +24,22 @@ from app.models.schemas import (
     SelectedBatchFolderValidationRequest,
     SelectedBatchFolderValidationResponse,
 )
-from app.services.cover_collage import compose_cover_collage
+from pasteup.services.cover_collage import compose_cover_collage
 from mullion import DEFAULT_TOLERANCE, BackgroundCleanMode
-from app.services.exporter import export_pages
+from pasteup.services.exporter import export_pages
 from mullion import (
     DEFAULT_DPI,
     PageGeometry,
     resolve_page_geometry,
 )
-from app.services.folder_scanner import (
+from pasteup.services.folder_scanner import (
     is_generated_output_folder,
     list_supported_image_paths,
     resolve_folder_path,
     scan_folder,
 )
-from app.services.grid_composer import compose_image_grids
-from app.services.video_exporter import build_preview_video
+from pasteup.services.grid_composer import compose_image_grids
+from pasteup.services.video_exporter import build_preview_video
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 

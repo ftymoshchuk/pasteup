@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Literal
 
 from mullion import DEFAULT_TOLERANCE, BackgroundCleanMode
-from app.services.cover_collage import CoverCollageFittingMode, CoverCollageTemplate
+from pasteup.services.cover_collage import CoverCollageFittingMode, CoverCollageTemplate
 from mullion import DEFAULT_DPI
 
 from pydantic import AliasChoices, BaseModel, Field, field_validator

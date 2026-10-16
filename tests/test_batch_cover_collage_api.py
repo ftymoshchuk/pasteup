@@ -4,8 +4,8 @@ import pytest
 from PIL import Image
 from fastapi import HTTPException
 
-from app.models.schemas import BatchCoverCollageGenerationRequest
-from app.routes.jobs import generate_cover_collage_batch_job
+from pasteup.models.schemas import BatchCoverCollageGenerationRequest
+from pasteup.routes.jobs import generate_cover_collage_batch_job
 
 
 def _create_image(path: Path, color: tuple[int, int, int]) -> None:

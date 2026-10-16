@@ -1,9 +1,10 @@
 import re
-from pathlib import Path
+from importlib.resources import files
 
-ROOT = Path(__file__).resolve().parents[1]
-INDEX_TEMPLATE = ROOT / "app" / "templates" / "index.html"
-APP_JS = ROOT / "app" / "static" / "js" / "app.js"
+# Read from the installed package, so these also prove the assets ship in it.
+PACKAGE = files("pasteup")
+INDEX_TEMPLATE = PACKAGE / "templates" / "index.html"
+APP_JS = PACKAGE / "static" / "js" / "app.js"
 
 
 def _squash_whitespace(value: str) -> str:

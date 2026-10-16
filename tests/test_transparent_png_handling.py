@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageChops
 
-from app.services.grid_composer import compose_image_grids
+from pasteup.services.grid_composer import compose_image_grids
 
 
 def _cutout_rgba(size: int = 80) -> Image.Image:

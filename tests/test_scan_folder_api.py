@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from app.models.schemas import ScanRequest
-from app.routes.jobs import scan_folder_job
+from pasteup.models.schemas import ScanRequest
+from pasteup.routes.jobs import scan_folder_job
 
 
 def test_scan_folder_valid_directory_under_12_images_returns_zero_estimated_pages(tmp_path: Path) -> None:

@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.routes.jobs import router as jobs_router
-from app.routes.ui import router as ui_router
+from pasteup.routes.jobs import router as jobs_router
+from pasteup.routes.ui import router as ui_router
 
 APP_DIR = Path(__file__).resolve().parent
 

@@ -12,10 +12,10 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from pydantic import ValidationError
 
-from app.main import app
-from app.models.schemas import GenerationRequest
-from app.routes.jobs import MAX_PAGE_MEGAPIXELS, _OutputOptions
-from app.services.video_exporter import build_preview_video
+from pasteup.main import app
+from pasteup.models.schemas import GenerationRequest
+from pasteup.routes.jobs import MAX_PAGE_MEGAPIXELS, _OutputOptions
+from pasteup.services.video_exporter import build_preview_video
 
 client = TestClient(app)
 
