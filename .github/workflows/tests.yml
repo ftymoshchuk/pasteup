@@ -44,3 +44,16 @@ jobs:
 
       - name: Test
         run: pytest -rs
+
+  # The aggregate gate, as in sigrix-io/mullion: the one check the branch
+  # ruleset requires on main, so changing the matrix or adding a job does not
+  # mean editing the ruleset to match.
+  ci-passed:
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job succeeded
+        run: |
+          echo '${{ toJSON(needs) }}'
+          [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "false" ]
