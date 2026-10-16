@@ -178,7 +178,7 @@ Health check endpoint.
 
 **Response**
 ```json
-{"status": "ok", "app": "pasteup", "version": "0.1.0"}
+{"status": "ok", "app": "pasteup", "version": "0.2.0"}
 ```
 
 ### `POST /api/jobs/scan-folder`
