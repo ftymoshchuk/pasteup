@@ -1,61 +1,69 @@
-# mar_place
+# Pasteup
 
-## MVP Overview
-`mar_place` contains **Image Grid App**, a FastAPI + vanilla JS tool that:
-- scans an input folder for supported images,
-- estimates page count,
-- composes a fixed **4x3 image grid** (12 images) per page,
-- exports generated pages as PNG or JPG at a chosen DPI,
-- optionally cleans a near-white background off each image before placing it,
-- lets the UI toggle between single-folder and batch-folder generation modes.
+Turn a folder of clip art into listing images: preview sheets, a cover collage
+and a short preview video, ready for Etsy and other marketplaces. Pasteup runs
+on your own computer and works in your browser.
 
-Project root:
-- `image_grid_app/` — runnable application.
+The name comes from *paste-up*, how clip art was used before desktop
+publishing: cut out by hand and pasted onto a layout board.
 
----
+## What it does
+- **Preview sheets:** 4x3 grids of your images on a white page, as PNG or JPG
+  at a chosen DPI.
+- **Cover collage:** a single page in one of three layouts, for a listing's
+  main image.
+- **Preview video:** an MP4 slideshow of the sheets, exactly as long as you ask
+  (Etsy's listing videos run 5 to 15 s).
+- **Clean-up:** transparent PNGs land on white instead of black, phone photos
+  are turned upright, and near-white backgrounds can be removed.
+- **Batch mode:** process every bundle folder under a parent folder in one go.
 
-## Installation and Run Commands
-
-Requires Python 3.11 or newer. The optional preview video also needs
+## Install
+Requires Python 3.11 or newer. The preview video also needs
 [ffmpeg](https://ffmpeg.org/) on `PATH`.
 
-### 1) Install dependencies
 ```bash
-cd image_grid_app
+git clone https://github.com/ftymoshchuk/pasteup.git
+cd pasteup
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install .
 ```
 
-### 2) Run the app
+## Run
 ```bash
-cd image_grid_app
-uvicorn app.main:app --reload
+pasteup
 ```
+Then open `http://127.0.0.1:8000/` (API docs: `http://127.0.0.1:8000/docs`).
+`pasteup --help` lists the options, and `python -m pasteup` works too.
 
-### 3) Open in browser
-- UI: `http://127.0.0.1:8000/`
-- API docs (Swagger): `http://127.0.0.1:8000/docs`
-
-The app reads and writes files at the paths you give it and has no login, so
+Pasteup reads and writes files at the paths you give it and has no login, so
 keep it on `127.0.0.1` (the default). See [SECURITY.md](SECURITY.md).
 
 ### Optional environment variables
-- `IMAGE_GRID_INPUT_FOLDER`: prefills the input-folder field, e.g.
-  `IMAGE_GRID_INPUT_FOLDER=~/Pictures/clip-art uvicorn app.main:app`.
-- `IMAGE_GRID_ALLOWED_HOSTS`: comma-separated host names to accept besides
+- `PASTEUP_INPUT_FOLDER`: prefills the input-folder field, e.g.
+  `PASTEUP_INPUT_FOLDER=~/Pictures/clip-art pasteup`.
+- `PASTEUP_ALLOWED_HOSTS`: comma-separated host names to accept besides
   `localhost`, `127.0.0.1` and `[::1]`. Only for serving the app under another
   name on purpose.
 
-### Development
+## Development
 ```bash
-cd image_grid_app
-pip install -r requirements-dev.txt
+pip install -e ".[dev]"
 ruff check .
 pytest
 ```
-CI runs the same on Python 3.11 and 3.13, with ffmpeg installed so the
-preview-video tests encode real files.
+CI runs the same on Python 3.11 and 3.13, against a regular install of the
+package and with ffmpeg present, so the preview-video tests encode real files.
+
+Project layout:
+- `src/pasteup/main.py`: the FastAPI app
+- `src/pasteup/routes/`: the page and the `/api/jobs` endpoints
+- `src/pasteup/services/`: scanning, page composition, collages, export, video
+- `src/pasteup/models/`: request and response schemas
+- `src/pasteup/templates/` and `src/pasteup/static/`: the UI
+- `src/pasteup/cli.py`: the `pasteup` command
+- `tests/`
 
 ---
 
@@ -74,7 +82,7 @@ Notes:
 
 ## Default Setting Values
 Default UI values:
-- input folder: empty (set `IMAGE_GRID_INPUT_FOLDER` to prefill it)
+- input folder: empty (set `PASTEUP_INPUT_FOLDER` to prefill it)
 - `page_width`: `3000`
 - `page_height`: `3000`
 - `gap`: `30`
@@ -358,6 +366,22 @@ Fixes:
 - Verify read permission on input folder and files.
 - Verify write permission on output folder.
 - Try a user-owned directory (for example inside your home directory).
+
+---
+
+## How images are loaded
+Opening, background cleaning and page geometry live in
+[mullion](https://github.com/sigrix-io/mullion), a small library Pasteup
+depends on (`mullion~=0.2.1`, from PyPI).
+
+`mullion.open_path()` is the one place a source image is opened. It composites
+transparency onto white (a bare `convert("RGB")` drops the alpha and leaves the
+black underneath showing) and applies EXIF orientation, so a phone photo is not
+placed sideways. `mullion.clean_background()` is the border-seeded cleaner
+described above, and `mullion.resolve_page_geometry()` turns `page_unit` and
+`dpi` into the pixel size the exporter stamps. mullion's own suite tests these
+directly; Pasteup's tests check the same claims through its composer and
+exporter, so a bad mullion upgrade still fails here.
 
 ---
 
